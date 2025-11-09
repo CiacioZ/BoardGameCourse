@@ -50,7 +50,7 @@ func (p *player) Draw(numberOfCards int) []card {
 	drawedCards := make([]card, numberOfCards)
 	for i := 0; i < numberOfCards; i++ {
 		drawedCard := p.OxygenCards[0]
-		drawedCards = append(drawedCards, drawedCard)
+		drawedCards[i] = drawedCard
 		p.OxygenCards = p.OxygenCards[1:]
 	}
 
@@ -81,7 +81,8 @@ func (p player) DecideActionToDo(gameState state, availableActions []actionType)
 	reader := bufio.NewScanner(os.Stdin)
 
 	for {
-		fmt.Printf("Choose action: A=ascend, D=dive, E=explore, C=calm, U=use object H=Hold")
+		fmt.Printf("Player '%s'choose action: A=ascend, D=dive, E=explore, C=calm, U=use object H=Hold\n", p.Id)
+		fmt.Printf("Answer:")
 		reader.Scan()
 		answer := strings.TrimSpace(strings.ToUpper(reader.Text()))
 

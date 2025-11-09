@@ -112,12 +112,14 @@ func (g *game) Run(numberOfGames int) {
 	g.state.Round = 1
 
 	for !g.IsGameEnded() {
-		fmt.Println(fmt.Printf("Start Round: %d", g.state.Round))
+		fmt.Printf("Start Round: %d\n", g.state.Round)
 
-		for i := g.state.ActualPlayer; i < len(g.state.Players); i++ {
+		for i := 0; i < len(g.state.Players); i++ {
 			g.state.ActualPlayer = i
 
 			p := g.GetActualPlayer()
+
+			fmt.Printf("Player '%s' start round\n", p.Id)
 
 			//BREATH
 			cards := p.Breath()
@@ -144,9 +146,11 @@ func (g *game) Run(numberOfGames int) {
 
 			//CHECK PANIC
 			p.CheckPanic()
+
+			fmt.Printf("Player '%s' end round\n", p.Id)
 		}
 
-		fmt.Println(fmt.Printf("End Round: %d", g.state.Round))
+		fmt.Printf("End Round: %d\n", g.state.Round)
 
 		g.state.NextRound()
 	}
