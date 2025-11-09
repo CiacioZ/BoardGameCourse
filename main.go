@@ -11,12 +11,12 @@ var NumberOfGames = 1
 
 func main() {
 
-	model.NewGame(
+	game := model.NewGame(
 		NumberOfPlayers,
 		NumberOfPanicCardsToActivateEffect,
 		NumberOfItemSlots,
 		NumberOfAmuletsToWin,
 	)
 
-	//game.Run(NumberOfGames)
+	game.Run(NumberOfGames)
 }
