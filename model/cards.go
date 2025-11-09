@@ -2,20 +2,28 @@ package model
 
 type card interface {
 	GetName() string
-	GetType() CardType
+	GetType() cardType
 }
 
-type CardType string
+type cardType string
 
 const (
-	PanicType CardType = "PANIC"
-	ItemType  CardType = "ITEM"
+	PanicType cardType = "PANIC"
+	ItemType  cardType = "ITEM"
 )
 
 type genericCard struct {
 	Name string
-	Type CardType
+	Type cardType
 }
 
 func (c genericCard) GetName() string   { return c.Name }
-func (c genericCard) GetType() CardType { return c.Type }
+func (c genericCard) GetType() cardType { return c.Type }
+
+func toCardSlice[T card](input []T) []card {
+	res := make([]card, len(input))
+	for i, v := range input {
+		res[i] = v
+	}
+	return res
+}

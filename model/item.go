@@ -35,13 +35,25 @@ type itemEffect struct {
 	value      int
 }
 
+type itemType string
+
+const (
+	Utility       itemType = "UTILITY"
+	TreasureToken itemType = "TREASURE_TOKEN"
+	Amulets       itemType = "AMULETS"
+)
+
 type item struct {
-	name    string
-	effects []itemEffect
+	name     string
+	itemType itemType
+	effects  []itemEffect
+	quantity int
 }
 
-var FlashLight = item{
-	name: "Flashlight",
+var flashlight = item{
+	name:     "flashlight",
+	itemType: Utility,
+	quantity: 1,
 	effects: []itemEffect{
 		{
 			effectType: LookNextO2Cards,
@@ -50,8 +62,10 @@ var FlashLight = item{
 	},
 }
 
-var EnhancedFins = item{
-	name: "EnhancedFins",
+var enhancedFins = item{
+	name:     "EnhancedFins",
+	itemType: Utility,
+	quantity: 1,
 	effects: []itemEffect{
 		{
 			effectType: MovementCostReduction,
@@ -60,8 +74,10 @@ var EnhancedFins = item{
 	},
 }
 
-var AdvancedMask = item{
-	name: "AdvancedMask",
+var advancedMask = item{
+	name:     "AdvancedMask",
+	itemType: Utility,
+	quantity: 1,
 	effects: []itemEffect{
 		{
 			effectType: BreathCostReduction,
@@ -70,8 +86,10 @@ var AdvancedMask = item{
 	},
 }
 
-var Net = item{
-	name: "Net",
+var net = item{
+	name:     "Net",
+	itemType: Utility,
+	quantity: 1,
 	effects: []itemEffect{
 		{
 			effectType: BlockPlayer,
@@ -80,8 +98,10 @@ var Net = item{
 	},
 }
 
-var ReinforcedNet = item{
-	name: "ReinforcedNet",
+var reinforcedNet = item{
+	name:     "ReinforcedNet",
+	itemType: Utility,
+	quantity: 1,
 	effects: []itemEffect{
 		{
 			effectType: BlockPlayer,
@@ -90,8 +110,10 @@ var ReinforcedNet = item{
 	},
 }
 
-var AntistressKit = item{
-	name: "AntistressKit",
+var antistressKit = item{
+	name:     "AntistressKit",
+	itemType: Utility,
+	quantity: 1,
 	effects: []itemEffect{
 		{
 			effectType: IgnorePanicActivation,
@@ -100,8 +122,10 @@ var AntistressKit = item{
 	},
 }
 
-var SpearGun = item{
-	name: "SpearGun",
+var spearGun = item{
+	name:     "SpearGun",
+	itemType: Utility,
+	quantity: 1,
 	effects: []itemEffect{
 		{
 			effectType: AnotherPlayerMustDrawO2,
@@ -110,8 +134,10 @@ var SpearGun = item{
 	},
 }
 
-var Harpoon = item{
-	name: "Harpoon",
+var harpoon = item{
+	name:     "Harpoon",
+	itemType: Utility,
+	quantity: 1,
 	effects: []itemEffect{
 		{
 			effectType: StealItemFromPlayer,
@@ -120,8 +146,10 @@ var Harpoon = item{
 	},
 }
 
-var MysticHarpoon = item{
-	name: "MysticHarpoon",
+var mysticHarpoon = item{
+	name:     "MysticHarpoon",
+	itemType: Utility,
+	quantity: 1,
 	effects: []itemEffect{
 		{
 			effectType: StealAmuletFromPLayer,
@@ -130,8 +158,10 @@ var MysticHarpoon = item{
 	},
 }
 
-var EmergencyAirBag = item{
-	name: "EmergencyAirBag",
+var emergencyAirBag = item{
+	name:     "EmergencyAirBag",
+	itemType: Utility,
+	quantity: 1,
 	effects: []itemEffect{
 		{
 			effectType: RecoverDiscardedO2,
@@ -140,14 +170,44 @@ var EmergencyAirBag = item{
 	},
 }
 
-var Sonar = item{
-	name: "Sonar",
+var sonar = item{
+	name:     "Sonar",
+	itemType: Utility,
+	quantity: 1,
 	effects: []itemEffect{
 		{
 			effectType: ReorderNextO2Cards,
 			value:      3,
 		},
 	},
+}
+
+var amulet = item{
+	name:     "Amulet",
+	itemType: Amulets,
+	quantity: 1,
+	effects:  []itemEffect{},
+}
+
+var smallTreasure = item{
+	name:     "Treasure",
+	itemType: TreasureToken,
+	effects:  []itemEffect{},
+	quantity: 1,
+}
+
+var mediumTreasure = item{
+	name:     "Treasure",
+	itemType: TreasureToken,
+	effects:  []itemEffect{},
+	quantity: 3,
+}
+
+var bigTreasure = item{
+	name:     "Treasure",
+	itemType: TreasureToken,
+	effects:  []itemEffect{},
+	quantity: 5,
 }
 
 var commonItemCards = []itemCard{
@@ -158,15 +218,15 @@ var commonItemCards = []itemCard{
 		},
 		rarity: Common,
 		items: map[int]item{
-			1: FlashLight,
-			2: FlashLight,
-			3: FlashLight,
-			4: FlashLight,
-			5: FlashLight,
-			6: FlashLight,
-			7: FlashLight,
-			8: FlashLight,
-			9: FlashLight,
+			1: flashlight,
+			2: flashlight,
+			3: flashlight,
+			4: flashlight,
+			5: flashlight,
+			6: flashlight,
+			7: flashlight,
+			8: flashlight,
+			9: flashlight,
 		},
 	},
 	{
@@ -176,15 +236,15 @@ var commonItemCards = []itemCard{
 		},
 		rarity: Common,
 		items: map[int]item{
-			1: FlashLight,
-			2: FlashLight,
-			3: FlashLight,
-			4: FlashLight,
-			5: FlashLight,
-			6: FlashLight,
-			7: FlashLight,
-			8: FlashLight,
-			9: FlashLight,
+			1: flashlight,
+			2: flashlight,
+			3: flashlight,
+			4: flashlight,
+			5: flashlight,
+			6: flashlight,
+			7: flashlight,
+			8: flashlight,
+			9: flashlight,
 		},
 	},
 	{
@@ -194,15 +254,15 @@ var commonItemCards = []itemCard{
 		},
 		rarity: Common,
 		items: map[int]item{
-			1: FlashLight,
-			2: FlashLight,
-			3: FlashLight,
-			4: FlashLight,
-			5: FlashLight,
-			6: FlashLight,
-			7: FlashLight,
-			8: FlashLight,
-			9: FlashLight,
+			1: flashlight,
+			2: flashlight,
+			3: flashlight,
+			4: flashlight,
+			5: flashlight,
+			6: flashlight,
+			7: flashlight,
+			8: flashlight,
+			9: flashlight,
 		},
 	},
 	{
@@ -212,15 +272,15 @@ var commonItemCards = []itemCard{
 		},
 		rarity: Common,
 		items: map[int]item{
-			1: FlashLight,
-			2: FlashLight,
-			3: FlashLight,
-			4: FlashLight,
-			5: FlashLight,
-			6: FlashLight,
-			7: FlashLight,
-			8: FlashLight,
-			9: FlashLight,
+			1: flashlight,
+			2: flashlight,
+			3: flashlight,
+			4: flashlight,
+			5: flashlight,
+			6: flashlight,
+			7: flashlight,
+			8: flashlight,
+			9: flashlight,
 		},
 	},
 	{
@@ -230,15 +290,15 @@ var commonItemCards = []itemCard{
 		},
 		rarity: Common,
 		items: map[int]item{
-			1: FlashLight,
-			2: FlashLight,
-			3: FlashLight,
-			4: FlashLight,
-			5: FlashLight,
-			6: FlashLight,
-			7: FlashLight,
-			8: FlashLight,
-			9: FlashLight,
+			1: flashlight,
+			2: flashlight,
+			3: flashlight,
+			4: flashlight,
+			5: flashlight,
+			6: flashlight,
+			7: flashlight,
+			8: flashlight,
+			9: flashlight,
 		},
 	},
 	{
@@ -248,15 +308,15 @@ var commonItemCards = []itemCard{
 		},
 		rarity: Common,
 		items: map[int]item{
-			1: FlashLight,
-			2: FlashLight,
-			3: FlashLight,
-			4: FlashLight,
-			5: FlashLight,
-			6: FlashLight,
-			7: FlashLight,
-			8: FlashLight,
-			9: FlashLight,
+			1: flashlight,
+			2: flashlight,
+			3: flashlight,
+			4: flashlight,
+			5: flashlight,
+			6: flashlight,
+			7: flashlight,
+			8: flashlight,
+			9: flashlight,
 		},
 	},
 	{
@@ -266,15 +326,15 @@ var commonItemCards = []itemCard{
 		},
 		rarity: Common,
 		items: map[int]item{
-			1: FlashLight,
-			2: FlashLight,
-			3: FlashLight,
-			4: FlashLight,
-			5: FlashLight,
-			6: FlashLight,
-			7: FlashLight,
-			8: FlashLight,
-			9: FlashLight,
+			1: flashlight,
+			2: flashlight,
+			3: flashlight,
+			4: flashlight,
+			5: flashlight,
+			6: flashlight,
+			7: flashlight,
+			8: flashlight,
+			9: flashlight,
 		},
 	},
 	{
@@ -284,15 +344,15 @@ var commonItemCards = []itemCard{
 		},
 		rarity: Common,
 		items: map[int]item{
-			1: FlashLight,
-			2: FlashLight,
-			3: FlashLight,
-			4: FlashLight,
-			5: FlashLight,
-			6: FlashLight,
-			7: FlashLight,
-			8: FlashLight,
-			9: FlashLight,
+			1: flashlight,
+			2: flashlight,
+			3: flashlight,
+			4: flashlight,
+			5: flashlight,
+			6: flashlight,
+			7: flashlight,
+			8: flashlight,
+			9: flashlight,
 		},
 	},
 }
@@ -305,15 +365,15 @@ var uncommonItemCards = []itemCard{
 		},
 		rarity: Uncommon,
 		items: map[int]item{
-			1: FlashLight,
-			2: FlashLight,
-			3: FlashLight,
-			4: FlashLight,
-			5: FlashLight,
-			6: FlashLight,
-			7: FlashLight,
-			8: FlashLight,
-			9: FlashLight,
+			1: flashlight,
+			2: flashlight,
+			3: flashlight,
+			4: flashlight,
+			5: flashlight,
+			6: flashlight,
+			7: flashlight,
+			8: flashlight,
+			9: flashlight,
 		},
 	},
 	{
@@ -323,15 +383,15 @@ var uncommonItemCards = []itemCard{
 		},
 		rarity: Uncommon,
 		items: map[int]item{
-			1: FlashLight,
-			2: FlashLight,
-			3: FlashLight,
-			4: FlashLight,
-			5: FlashLight,
-			6: FlashLight,
-			7: FlashLight,
-			8: FlashLight,
-			9: FlashLight,
+			1: flashlight,
+			2: flashlight,
+			3: flashlight,
+			4: flashlight,
+			5: flashlight,
+			6: flashlight,
+			7: flashlight,
+			8: flashlight,
+			9: flashlight,
 		},
 	},
 	{
@@ -341,15 +401,15 @@ var uncommonItemCards = []itemCard{
 		},
 		rarity: Uncommon,
 		items: map[int]item{
-			1: FlashLight,
-			2: FlashLight,
-			3: FlashLight,
-			4: FlashLight,
-			5: FlashLight,
-			6: FlashLight,
-			7: FlashLight,
-			8: FlashLight,
-			9: FlashLight,
+			1: flashlight,
+			2: flashlight,
+			3: flashlight,
+			4: flashlight,
+			5: flashlight,
+			6: flashlight,
+			7: flashlight,
+			8: flashlight,
+			9: flashlight,
 		},
 	},
 	{
@@ -359,15 +419,15 @@ var uncommonItemCards = []itemCard{
 		},
 		rarity: Uncommon,
 		items: map[int]item{
-			1: FlashLight,
-			2: FlashLight,
-			3: FlashLight,
-			4: FlashLight,
-			5: FlashLight,
-			6: FlashLight,
-			7: FlashLight,
-			8: FlashLight,
-			9: FlashLight,
+			1: flashlight,
+			2: flashlight,
+			3: flashlight,
+			4: flashlight,
+			5: flashlight,
+			6: flashlight,
+			7: flashlight,
+			8: flashlight,
+			9: flashlight,
 		},
 	},
 	{
@@ -377,15 +437,15 @@ var uncommonItemCards = []itemCard{
 		},
 		rarity: Uncommon,
 		items: map[int]item{
-			1: FlashLight,
-			2: FlashLight,
-			3: FlashLight,
-			4: FlashLight,
-			5: FlashLight,
-			6: FlashLight,
-			7: FlashLight,
-			8: FlashLight,
-			9: FlashLight,
+			1: flashlight,
+			2: flashlight,
+			3: flashlight,
+			4: flashlight,
+			5: flashlight,
+			6: flashlight,
+			7: flashlight,
+			8: flashlight,
+			9: flashlight,
 		},
 	},
 	{
@@ -395,15 +455,15 @@ var uncommonItemCards = []itemCard{
 		},
 		rarity: Uncommon,
 		items: map[int]item{
-			1: FlashLight,
-			2: FlashLight,
-			3: FlashLight,
-			4: FlashLight,
-			5: FlashLight,
-			6: FlashLight,
-			7: FlashLight,
-			8: FlashLight,
-			9: FlashLight,
+			1: flashlight,
+			2: flashlight,
+			3: flashlight,
+			4: flashlight,
+			5: flashlight,
+			6: flashlight,
+			7: flashlight,
+			8: flashlight,
+			9: flashlight,
 		},
 	},
 }
@@ -416,15 +476,15 @@ var rareItemCards = []itemCard{
 		},
 		rarity: Rare,
 		items: map[int]item{
-			1: FlashLight,
-			2: FlashLight,
-			3: FlashLight,
-			4: FlashLight,
-			5: FlashLight,
-			6: FlashLight,
-			7: FlashLight,
-			8: FlashLight,
-			9: FlashLight,
+			1: flashlight,
+			2: flashlight,
+			3: flashlight,
+			4: flashlight,
+			5: flashlight,
+			6: flashlight,
+			7: flashlight,
+			8: flashlight,
+			9: flashlight,
 		},
 	},
 	{
@@ -434,15 +494,15 @@ var rareItemCards = []itemCard{
 		},
 		rarity: Rare,
 		items: map[int]item{
-			1: FlashLight,
-			2: FlashLight,
-			3: FlashLight,
-			4: FlashLight,
-			5: FlashLight,
-			6: FlashLight,
-			7: FlashLight,
-			8: FlashLight,
-			9: FlashLight,
+			1: flashlight,
+			2: flashlight,
+			3: flashlight,
+			4: flashlight,
+			5: flashlight,
+			6: flashlight,
+			7: flashlight,
+			8: flashlight,
+			9: flashlight,
 		},
 	},
 	{
@@ -452,15 +512,15 @@ var rareItemCards = []itemCard{
 		},
 		rarity: Rare,
 		items: map[int]item{
-			1: FlashLight,
-			2: FlashLight,
-			3: FlashLight,
-			4: FlashLight,
-			5: FlashLight,
-			6: FlashLight,
-			7: FlashLight,
-			8: FlashLight,
-			9: FlashLight,
+			1: flashlight,
+			2: flashlight,
+			3: flashlight,
+			4: flashlight,
+			5: flashlight,
+			6: flashlight,
+			7: flashlight,
+			8: flashlight,
+			9: flashlight,
 		},
 	},
 	{
@@ -470,15 +530,15 @@ var rareItemCards = []itemCard{
 		},
 		rarity: Rare,
 		items: map[int]item{
-			1: FlashLight,
-			2: FlashLight,
-			3: FlashLight,
-			4: FlashLight,
-			5: FlashLight,
-			6: FlashLight,
-			7: FlashLight,
-			8: FlashLight,
-			9: FlashLight,
+			1: flashlight,
+			2: flashlight,
+			3: flashlight,
+			4: flashlight,
+			5: flashlight,
+			6: flashlight,
+			7: flashlight,
+			8: flashlight,
+			9: flashlight,
 		},
 	},
 }
@@ -491,15 +551,15 @@ var legendaryItemCards = []itemCard{
 		},
 		rarity: Legendary,
 		items: map[int]item{
-			1: FlashLight,
-			2: FlashLight,
-			3: FlashLight,
-			4: FlashLight,
-			5: FlashLight,
-			6: FlashLight,
-			7: FlashLight,
-			8: FlashLight,
-			9: FlashLight,
+			1: flashlight,
+			2: flashlight,
+			3: flashlight,
+			4: flashlight,
+			5: flashlight,
+			6: flashlight,
+			7: flashlight,
+			8: flashlight,
+			9: flashlight,
 		},
 	},
 	{
@@ -509,15 +569,15 @@ var legendaryItemCards = []itemCard{
 		},
 		rarity: Legendary,
 		items: map[int]item{
-			1: FlashLight,
-			2: FlashLight,
-			3: FlashLight,
-			4: FlashLight,
-			5: FlashLight,
-			6: FlashLight,
-			7: FlashLight,
-			8: FlashLight,
-			9: FlashLight,
+			1: flashlight,
+			2: flashlight,
+			3: flashlight,
+			4: flashlight,
+			5: flashlight,
+			6: flashlight,
+			7: flashlight,
+			8: flashlight,
+			9: flashlight,
 		},
 	},
 }

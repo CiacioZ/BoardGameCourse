@@ -1,22 +1,21 @@
 package model
 
-import "fmt"
+import (
+	"bufio"
+	"fmt"
+	"math/rand"
+	"os"
+	"strings"
+	"time"
+)
 
 type GameParameterType string
 
 const (
-	NumberOfPlayers                     GameParameterType = "NUMBER_OF_PLAYERS"
-	NumberOfPanicCardsWithOneType       GameParameterType = "NUMBER_OF_PANIC_CARD_WITH_ONE_TYPE"
-	NumberOfPanicCardsWithTwoType       GameParameterType = "NUMBER_OF_PANIC_CARD_WITH_TWO_TYPE"
-	NumberOfPanicCardsWithThreeType     GameParameterType = "NUMBER_OF_PANIC_CARD_WITH_THREE_TYPE"
-	NumberOfPanicCardsToActivateEffect  GameParameterType = "NUMBER_OF_PANIC_CARD_TO_ACTIVATE_EFFECT"
-	NumberOfItemCardsForCommonRarity    GameParameterType = "NUMBER_OF_ITEM_CARD_FOR_COMMON_RARITY"
-	NumberOfItemCardsForUncommonRarity  GameParameterType = "NUMBER_OF_ITEM_CARD_FOR_UNCOMMON_RARITY"
-	NumberOfItemCardsForRareRarity      GameParameterType = "NUMBER_OF_ITEM_CARD_FOR_RARE_RARITY"
-	NumberOfItemCardsForLegendaryRarity GameParameterType = "NUMBER_OF_ITEM_CARD_FOR_LEGENDARY_RARITY"
-	NumberOfItemSlots                   GameParameterType = "NUMBER_OF_ITEM_SLOTS"
-	NumberOfAmulets                     GameParameterType = "NUMBER_OF_AMULETS"
-	NumberOfAmuletsToWin                GameParameterType = "NUMBER_OF_AMULETS_TO_WIN"
+	NumberOfPlayers                    GameParameterType = "NUMBER_OF_PLAYERS"
+	NumberOfPanicCardsToActivateEffect GameParameterType = "NUMBER_OF_PANIC_CARD_TO_ACTIVATE_EFFECT"
+	NumberOfItemSlots                  GameParameterType = "NUMBER_OF_ITEM_SLOTS"
+	NumberOfAmuletsToWin               GameParameterType = "NUMBER_OF_AMULETS_TO_WIN"
 )
 
 type gameParameter struct {
@@ -34,6 +33,7 @@ func NewGameParameter(parameterType GameParameterType, value int) gameParameter 
 type game struct {
 	state      state
 	parameters parameters
+	randomizer *rand.Rand
 }
 
 type parameters struct {
@@ -93,14 +93,13 @@ func NewGame(
 	g := game{
 		parameters: NewGameParameters(parameters),
 		state:      NewState(),
+		randomizer: rand.New(rand.NewSource(time.Now().UnixNano())),
 	}
 
 	for i := range g.parameters.values[NumberOfPlayers] {
-		player := NewPlayer(fmt.Sprintf("Player %d", i))
+		player := NewPlayer(fmt.Sprintf("Player %d", i), g.parameters.values[NumberOfItemSlots])
 
-		oxygenDeck := g.GenerateOxygenDeck()
-
-		player.OxygenCards = oxygenDeck
+		player.OxygenCards = g.GenerateOxygenDeck()
 
 		g.state.AddPlayer(player)
 	}
@@ -115,17 +114,62 @@ func (g *game) Run(numberOfGames int) {
 	for !g.IsGameEnded() {
 		fmt.Println(fmt.Printf("Start Round: %d", g.state.Round))
 
-		//TODO: Insert logic
+		for i := g.state.ActualPlayer; i < len(g.state.Players); i++ {
+			g.state.ActualPlayer = i
+
+			p := g.GetActualPlayer()
+
+			//BREATH
+			cards := p.Breath()
+			p.Discard(cards)
+			if p.IsDead() {
+				g.state.NextPlayer()
+				continue
+			}
+
+			//CHECK PANIC
+			effects := p.CheckPanic()
+			if len(effects) > 0 {
+				g.ApplyEffect(g.state.Players[g.state.ActualPlayer], effects)
+			}
+
+			//CHECK PLAYER EFFECTS
+			availableActions := p.CheckPlayerEffects()
+
+			//DECIDE ACTION TO DO
+			actionToDo := p.DecideActionToDo(g.state, availableActions)
+
+			//RESOLVE ACTION
+			g.resolveAction(p, actionToDo)
+
+			//CHECK PANIC
+			p.CheckPanic()
+		}
 
 		fmt.Println(fmt.Printf("End Round: %d", g.state.Round))
 
-		g.state.Round++
+		g.state.NextRound()
 	}
+}
 
+func (g game) GetActualPlayer() player {
+	return g.state.Players[g.state.ActualPlayer]
 }
 
 func (g *game) IsDavyJonesIsDead() bool {
-	return false
+	amuletAtLevel10 := 0
+
+	for _, player := range g.state.Players {
+		if player.DiveLevel == 10 {
+			for _, item := range player.Inventory {
+				if item.itemType == Amulets {
+					amuletAtLevel10++
+				}
+			}
+		}
+	}
+
+	return amuletAtLevel10 >= 3
 }
 
 func (g *game) AreAllPlayersDead() bool {
@@ -150,45 +194,271 @@ func (g *game) GenerateOxygenDeck() []card {
 	deck := make([]card, 0)
 
 	//Generate one color type panic card
-	for i := 1; i <= g.parameters.values[NumberOfPanicCardsWithOneType]; i++ {
+	for i := 1; i <= 2; i++ {
+		deck = append(deck, toCardSlice(singlePanicCards)...)
 
-		deck = append(deck, panicCard{
-			genericCard: genericCard{
-				Name: fmt.Sprintf("Panic Card 1C %d", i),
-				Type: PanicType,
-			},
-		})
 	}
 
 	//Generate two color type panic card
-	for i := 1; i <= g.parameters.values[NumberOfPanicCardsWithTwoType]; i++ {
-
-	}
+	deck = append(deck, toCardSlice(doublePanicCards)...)
 
 	//Generate three color type panic card
-	for i := 1; i <= g.parameters.values[NumberOfPanicCardsWithThreeType]; i++ {
-
-	}
+	deck = append(deck, toCardSlice(triplePanicCards)...)
 
 	//Generate common item card
-	for i := 1; i <= g.parameters.values[NumberOfItemCardsForCommonRarity]; i++ {
-
-	}
+	deck = append(deck, toCardSlice(commonItemCards)...)
 
 	//Generate uncommon item card
-	for i := 1; i <= g.parameters.values[NumberOfItemCardsForUncommonRarity]; i++ {
-
-	}
+	deck = append(deck, toCardSlice(uncommonItemCards)...)
 
 	//Generate rare item card
-	for i := 1; i <= g.parameters.values[NumberOfItemCardsForRareRarity]; i++ {
-
-	}
+	deck = append(deck, toCardSlice(rareItemCards)...)
 
 	//Generate legendary item card
-	for i := 1; i <= g.parameters.values[NumberOfItemCardsForLegendaryRarity]; i++ {
+	deck = append(deck, toCardSlice(legendaryItemCards)...)
 
-	}
+	g.randomizer.Shuffle(len(deck), func(i, j int) {
+		deck[i], deck[j] = deck[j], deck[i]
+	})
 
 	return deck
+}
+
+func (g *game) ApplyEffect(p player, effects []panicEffect) {
+	for _, effect := range effects {
+		switch effect.effectType {
+		case MoveUp:
+			p.DiveLevel -= effect.value
+			if p.DiveLevel < 1 {
+				p.DiveLevel = 1
+			}
+		case MoveDown:
+			p.DiveLevel += effect.value
+			if p.DiveLevel > 10 {
+				p.DiveLevel = 10
+			}
+		case CannotExplore:
+			p.ActiveEffects[CantExplore] = effect.value
+		case JumpTurn:
+			p.ActiveEffects[SkipTurn] = effect.value
+		case DiscardO2:
+			cards := p.Draw(effect.value)
+			p.Discard(cards)
+		case DropObject:
+			for i := 0; i < effect.value; i++ {
+				item := p.Inventory[i]
+				if item.itemType == Utility {
+					p.DiscardedObjects = append(p.DiscardedObjects, *item)
+					p.Inventory[i] = nil
+				}
+			}
+		case MustCalmDown:
+			p.ActiveEffects[HaveToCalmDown] = effect.value
+		case ExchangeRandomCard:
+			fmt.Println("ExchangeRandomCard TO BE IMPLEMENTED")
+		case DropTreasureToken:
+			for i := 0; i < effect.value; i++ {
+				item := p.Inventory[i]
+				if item.itemType == TreasureToken {
+					p.DiscardedObjects = append(p.DiscardedObjects, *item)
+					p.Inventory[i] = nil
+				}
+			}
+		case DropAmulet:
+			for i := 0; i < effect.value; i++ {
+				item := p.Inventory[i]
+				if item.itemType == Amulets {
+					p.DiscardedObjects = append(p.DiscardedObjects, *item)
+					p.Inventory[i] = nil
+				}
+			}
+		case DropEverything:
+			for i := 0; i < effect.value; i++ {
+				item := p.Inventory[i]
+				p.DiscardedObjects = append(p.DiscardedObjects, *item)
+				p.Inventory[i] = nil
+
+			}
+		case DropEverythingButAmulets:
+			for i := 0; i < effect.value; i++ {
+				item := p.Inventory[i]
+				if item.itemType != Amulets {
+					p.DiscardedObjects = append(p.DiscardedObjects, *item)
+					p.Inventory[i] = nil
+				}
+			}
+		case DropO2ForSameLevelPlayers:
+			for _, player := range g.state.Players {
+				if player.Id != p.Id && player.DiveLevel == p.DiveLevel {
+					cards := player.Draw(effect.value)
+					player.HandCards = append(player.HandCards, cards...)
+				}
+			}
+		case DrawO2:
+			cards := p.Draw(effect.value)
+			p.HandCards = append(p.HandCards, cards...)
+		}
+	}
+}
+
+func (g *game) resolveAction(p player, action action) {
+
+	switch action.actionType {
+
+	case Explore:
+		cards := p.Draw(action.params[ExploreTime])
+		panicCards := make([]card, 0)
+		items := make([]item, 0)
+		for _, card := range cards {
+			if card.GetType() == PanicType {
+				panicCards = append(panicCards, card)
+			} else {
+				itemCard := card.(itemCard)
+				items = append(items, itemCard.items[p.DiveLevel])
+			}
+		}
+		for _, item := range items {
+			for i, slot := range p.Inventory {
+				if slot == nil {
+					p.Inventory[i] = &item
+				} else {
+					reader := bufio.NewScanner(os.Stdin)
+
+					for {
+						fmt.Printf("Do you want to keep item '%s' and drop item '%s'? (Y/N): ", item.name, slot.name)
+						reader.Scan()
+						answer := strings.TrimSpace(strings.ToUpper(reader.Text()))
+
+						if answer == "Y" {
+							p.Inventory[i] = &item
+							break
+						} else if answer == "N" {
+							continue
+						} else {
+							fmt.Println("Please answer with Y or N.")
+						}
+					}
+				}
+			}
+		}
+
+		p.HandCards = append(p.HandCards, panicCards...)
+
+	case Dive:
+		p.DiveLevel += action.params[DiveLevels]
+		cards := p.Draw(action.params[DiveLevels])
+		for _, card := range cards {
+			if card.GetType() == PanicType {
+				p.HandCards = append(p.HandCards, card)
+			}
+		}
+	case CalmDown:
+		cards := p.Draw(1)
+		for _, card := range cards {
+			if card.GetType() == PanicType {
+				p.HandCards = append(p.HandCards, card)
+			}
+		}
+		discardedCard := 0
+		for i, panicCard := range p.HandCards {
+			reader := bufio.NewScanner(os.Stdin)
+
+			for discardedCard < 3 || len(p.HandCards) == 0 {
+				fmt.Printf("Do you want to keep panic card '%s'? (Y/N): ", panicCard.GetName())
+				reader.Scan()
+				answer := strings.TrimSpace(strings.ToUpper(reader.Text()))
+
+				if answer == "Y" {
+					discardedCard++
+					p.DiscardedCards = append(p.DiscardedCards, panicCard)
+					p.HandCards = append(p.HandCards[:i], p.HandCards[i+1:]...)
+					continue
+				} else if answer == "N" {
+					continue
+				} else {
+					fmt.Println("Please answer with Y or N.")
+				}
+			}
+		}
+	case Ascend:
+		p.DiveLevel -= action.params[AscendLevels]
+		cards := p.Draw(action.params[AscendLevels])
+		for _, card := range cards {
+			if card.GetType() == PanicType {
+				p.HandCards = append(p.HandCards, card)
+			}
+		}
+		discardedCard := 0
+		for i, panicCard := range p.HandCards {
+			reader := bufio.NewScanner(os.Stdin)
+
+			for discardedCard < action.params[AscendLevels]+1 || len(p.HandCards) == 0 {
+				fmt.Printf("Do you want to keep panic card '%s'? (Y/N): ", panicCard.GetName())
+				reader.Scan()
+				answer := strings.TrimSpace(strings.ToUpper(reader.Text()))
+
+				if answer == "Y" {
+					discardedCard++
+					p.DiscardedCards = append(p.DiscardedCards, panicCard)
+					p.HandCards = append(p.HandCards[:i], p.HandCards[i+1:]...)
+					continue
+				} else if answer == "N" {
+					continue
+				} else {
+					fmt.Println("Please answer with Y or N.")
+				}
+			}
+		}
+	case Distract:
+		cards := p.Draw(2)
+		for _, card := range cards {
+			if card.GetType() == PanicType {
+				p.HandCards = append(p.HandCards, card)
+			}
+		}
+		for _, player := range g.state.Players {
+			if player.Id != p.Id && player.DiveLevel == p.DiveLevel {
+				cards := player.Draw(2)
+				for _, card := range cards {
+					if card.GetType() == PanicType {
+						player.HandCards = append(player.HandCards, card)
+					}
+				}
+				value, found := player.ActiveEffects[CantExplore]
+				if !found {
+					player.ActiveEffects[CantExplore] = 1
+				} else {
+					player.ActiveEffects[CantExplore] = value + 1
+				}
+			}
+		}
+
+	case UseObject:
+		itemToActivate := p.Inventory[action.params[ItemToUse]]
+		for _, effect := range itemToActivate.effects {
+			switch effect.effectType {
+			case LookNextO2Cards:
+				fmt.Printf("%s NOT IMPLEMENTED", effect.effectType)
+			case MovementCostReduction:
+				fmt.Printf("%s NOT IMPLEMENTED", effect.effectType)
+			case BreathCostReduction:
+				fmt.Printf("%s NOT IMPLEMENTED", effect.effectType)
+			case BlockPlayer:
+				fmt.Printf("%s NOT IMPLEMENTED", effect.effectType)
+			case IgnorePanicActivation:
+				fmt.Printf("%s NOT IMPLEMENTED", effect.effectType)
+			case AnotherPlayerMustDrawO2:
+				fmt.Printf("%s NOT IMPLEMENTED", effect.effectType)
+			case StealItemFromPlayer:
+				fmt.Printf("%s NOT IMPLEMENTED", effect.effectType)
+			case StealAmuletFromPLayer:
+				fmt.Printf("%s NOT IMPLEMENTED", effect.effectType)
+			case RecoverDiscardedO2:
+				fmt.Printf("%s NOT IMPLEMENTED", effect.effectType)
+			case ReorderNextO2Cards:
+				fmt.Printf("%s NOT IMPLEMENTED", effect.effectType)
+			}
+		}
+	}
+
 }

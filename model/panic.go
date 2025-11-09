@@ -25,7 +25,7 @@ const (
 	JumpTurn                  panicEffectType = "JUMP_TURN"
 	DiscardO2                 panicEffectType = "DISCARD_O2"
 	DropObject                panicEffectType = "DROP_OBJECT"
-	MustCalmDonw              panicEffectType = "MUST_CALM_DOWN"
+	MustCalmDown              panicEffectType = "MUST_CALM_DOWN"
 	ExchangeRandomCard        panicEffectType = "EXCHANGE_RANDOM_CARD"
 	DropTreasureToken         panicEffectType = "DROP_TREASURE_TOKEN"
 	DropAmulet                panicEffectType = "DROP_AMULET"
@@ -75,7 +75,7 @@ var redMidLevels = []panicEffect{
 		value:      2,
 	},
 	{
-		effectType: MustCalmDonw,
+		effectType: MustCalmDown,
 		value:      1,
 	},
 }
@@ -89,7 +89,7 @@ var redDeepLevels = []panicEffect{
 		value:      3,
 	},
 	{
-		effectType: MustCalmDonw,
+		effectType: MustCalmDown,
 		value:      1,
 	},
 	{
@@ -331,31 +331,6 @@ var singlePanicCards = []panicCard{
 		},
 	},
 }
-
-/*
-
-
-
-green – blue
-
-green – yellow
-
-green – black
-
-green – purple
-
-blue – yellow
-
-blue – black
-
-blue – purple
-
-yellow – black
-
-yellow – purple
-
-black – purple
-*/
 
 var doublePanicCards = []panicCard{
 	{
