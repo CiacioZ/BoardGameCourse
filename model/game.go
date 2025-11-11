@@ -362,7 +362,9 @@ func (g *game) resolveAction(p *player, action action) {
 	switch action.actionType {
 
 	case Explore:
+		fmt.Printf("\t[LOG] Explore action: drawing %d cards\n", action.params[ExploreTime])
 		cards := p.Draw(action.params[ExploreTime])
+		fmt.Printf("\t[LOG] Drawn %d cards from oxygen deck\n", len(cards))
 		panicCards := make([]card, 0)
 		items := make([]item, 0)
 		for _, card := range cards {
@@ -373,49 +375,80 @@ func (g *game) resolveAction(p *player, action action) {
 				items = append(items, itemCard.items[p.DiveLevel])
 			}
 		}
+		fmt.Printf("\t[LOG] Found %d panic cards and %d items (at dive level %d)\n", len(panicCards), len(items), p.DiveLevel)
 		for _, item := range items {
-			for i, slot := range p.Inventory {
+			fmt.Printf("\t[LOG] Processing item: %s (type: %s)\n", item.name, item.itemType)
+			itemPlaced := false
+			for i := 0; i < len(p.Inventory); i++ {
+				slot := p.Inventory[i]
 				if slot == nil {
 					p.Inventory[i] = &item
+					itemPlaced = true
+					fmt.Printf("\t[LOG] Item '%s' placed in empty inventory slot %d\n", item.name, i)
+					break // Break after placing item in empty slot
 				} else {
 					reader := bufio.NewScanner(os.Stdin)
 
-					fmt.Printf("\tDo you want to keep item '%s' and drop item '%s'? (Y/N): ", item.name, slot.name)
-					reader.Scan()
-					answer := strings.TrimSpace(strings.ToUpper(reader.Text()))
+					for {
+						fmt.Printf("\tDo you want to keep item '%s' and drop item '%s'? (Y/N): ", item.name, slot.name)
+						reader.Scan()
+						answer := strings.TrimSpace(strings.ToUpper(reader.Text()))
 
-					if answer == "Y" {
-						p.Inventory[i] = &item
-						break
-					} else if answer == "N" {
-						continue
-					} else {
-						fmt.Printf("\tPlease answer with Y or N.\n")
+						if answer == "Y" {
+							fmt.Printf("\t[LOG] Replacing item '%s' with '%s' in slot %d\n", slot.name, item.name, i)
+							p.Inventory[i] = &item
+							itemPlaced = true
+							break // Break from input loop and then from slot loop
+						} else if answer == "N" {
+							fmt.Printf("\t[LOG] Player declined to replace item '%s' in slot %d\n", slot.name, i)
+							break // Break from input loop, continue to next slot
+						} else {
+							fmt.Printf("\tPlease answer with Y or N.\n")
+							// Continue input loop to ask again
+						}
 					}
-
+					if itemPlaced {
+						break // Break from slot loop after placing item
+					}
 				}
+			}
+			if !itemPlaced {
+				fmt.Printf("\t[LOG] Item '%s' was not placed (all slots full and player declined all replacements)\n", item.name)
 			}
 		}
 
 		p.HandCards = append(p.HandCards, panicCards...)
+		fmt.Printf("\t[LOG] Added %d panic cards to hand\n", len(panicCards))
 
 	case Dive:
+		oldLevel := p.DiveLevel
 		p.DiveLevel += action.params[DiveLevels]
+		fmt.Printf("\t[LOG] Dive action: level changed from %d to %d (dived %d levels)\n", oldLevel, p.DiveLevel, action.params[DiveLevels])
 		cards := p.Draw(action.params[DiveLevels])
+		fmt.Printf("\t[LOG] Drawn %d cards from oxygen deck\n", len(cards))
+		panicCount := 0
 		for _, card := range cards {
 			if card.GetType() == PanicType {
 				p.HandCards = append(p.HandCards, card)
+				panicCount++
 			}
 		}
+		fmt.Printf("\t[LOG] Added %d panic cards to hand\n", panicCount)
 	case CalmDown:
+		fmt.Printf("\t[LOG] CalmDown action: drawing 1 card\n")
 		cards := p.Draw(1)
+		panicCount := 0
+		nonPanicCount := 0
 		for _, card := range cards {
 			if card.GetType() == PanicType {
 				p.HandCards = append(p.HandCards, card)
+				panicCount++
 			} else {
 				p.DiscardedCards = append(p.DiscardedCards, card)
+				nonPanicCount++
 			}
 		}
+		fmt.Printf("\t[LOG] Added %d panic cards to hand, discarded %d non-panic cards\n", panicCount, nonPanicCount)
 		discardedCard := 0
 		for discardedCard < 3 && len(p.HandCards) > 0 {
 			removed := false
@@ -431,6 +464,7 @@ func (g *game) resolveAction(p *player, action action) {
 
 					if answer == "Y" {
 						discardedCard++
+						fmt.Printf("\t[LOG] Discarding panic card '%s' (%d/%d discarded)\n", panicCard.GetName(), discardedCard, 3)
 						p.DiscardedCards = append(p.DiscardedCards, panicCard)
 						p.HandCards = append(p.HandCards[:i], p.HandCards[i+1:]...)
 						removed = true
@@ -448,15 +482,26 @@ func (g *game) resolveAction(p *player, action action) {
 				}
 			}
 		}
+		fmt.Printf("\t[LOG] CalmDown complete: discarded %d panic cards\n", discardedCard)
 	case Ascend:
+		oldLevel := p.DiveLevel
 		p.DiveLevel -= action.params[AscendLevels]
+		if p.DiveLevel < 1 {
+			p.DiveLevel = 1
+		}
+		fmt.Printf("\t[LOG] Ascend action: level changed from %d to %d (ascended %d levels)\n", oldLevel, p.DiveLevel, action.params[AscendLevels])
 		cards := p.Draw(action.params[AscendLevels])
+		fmt.Printf("\t[LOG] Drawn %d cards from oxygen deck\n", len(cards))
+		panicCount := 0
 		for _, card := range cards {
 			if card.GetType() == PanicType {
 				p.HandCards = append(p.HandCards, card)
+				panicCount++
 			}
 		}
+		fmt.Printf("\t[LOG] Added %d panic cards to hand\n", panicCount)
 		discardedCard := 0
+		fmt.Printf("\t[LOG] Must discard %d panic cards\n", action.params[AscendLevels]+1)
 		for discardedCard < action.params[AscendLevels]+1 && len(p.HandCards) > 0 {
 			removed := false
 			// Iterate backwards to safely remove elements
@@ -471,6 +516,7 @@ func (g *game) resolveAction(p *player, action action) {
 
 					if answer == "Y" {
 						discardedCard++
+						fmt.Printf("\t[LOG] Discarding panic card '%s' (%d/%d discarded)\n", panicCard.GetName(), discardedCard, action.params[AscendLevels]+1)
 						p.DiscardedCards = append(p.DiscardedCards, panicCard)
 						p.HandCards = append(p.HandCards[:i], p.HandCards[i+1:]...)
 						removed = true
@@ -488,33 +534,67 @@ func (g *game) resolveAction(p *player, action action) {
 				}
 			}
 		}
+		fmt.Printf("\t[LOG] Ascend complete: discarded %d panic cards\n", discardedCard)
 	case Distract:
+		fmt.Printf("\t[LOG] Distract action: drawing 2 cards\n")
 		cards := p.Draw(2)
+		panicCount := 0
 		for _, card := range cards {
 			if card.GetType() == PanicType {
 				p.HandCards = append(p.HandCards, card)
+				panicCount++
 			}
 		}
+		fmt.Printf("\t[LOG] Added %d panic cards to hand\n", panicCount)
+		affectedPlayers := 0
 		for _, player := range g.state.Players {
 			if player.Id != p.Id && player.DiveLevel == p.DiveLevel {
+				affectedPlayers++
+				fmt.Printf("\t[LOG] Distracting player '%s' at same level (%d)\n", player.Id, player.DiveLevel)
 				cards := player.Draw(2)
+				playerPanicCount := 0
 				for _, card := range cards {
 					if card.GetType() == PanicType {
 						player.HandCards = append(player.HandCards, card)
+						playerPanicCount++
 					}
 				}
+				fmt.Printf("\t[LOG] Player '%s' received %d panic cards\n", player.Id, playerPanicCount)
 				value, found := player.ActiveEffects[CantExplore]
 				if !found {
 					player.ActiveEffects[CantExplore] = 1
+					fmt.Printf("\t[LOG] Player '%s' now has CantExplore effect (1 turn)\n", player.Id)
 				} else {
 					player.ActiveEffects[CantExplore] = value + 1
+					fmt.Printf("\t[LOG] Player '%s' CantExplore effect extended to %d turns\n", player.Id, value+1)
 				}
 			}
 		}
+		if affectedPlayers == 0 {
+			fmt.Printf("\t[LOG] No other players at same level to distract\n")
+		}
 
 	case UseObject:
-		itemToActivate := p.Inventory[action.params[ItemToUse]]
+		itemToUse, hasItemParam := action.params[ItemToUse]
+		if !hasItemParam {
+			fmt.Printf("\t[LOG] UseObject action: Hold action (no item specified)\n")
+			return
+		}
+		itemIndex := itemToUse - 1 // Convert to 0-based index
+		if itemIndex < 0 || itemIndex >= len(p.Inventory) {
+			fmt.Printf("\t[LOG] UseObject action: invalid item index %d\n", itemToUse)
+			return
+		}
+		itemToActivate := p.Inventory[itemIndex]
+		if itemToActivate == nil {
+			fmt.Printf("\t[LOG] UseObject action: no item at inventory slot %d\n", itemToUse)
+			return
+		}
+		fmt.Printf("\t[LOG] UseObject action: using item '%s' (slot %d)\n", itemToActivate.name, itemToUse)
+		effectCount := 0
 		for _, effect := range itemToActivate.effects {
+			effectCount++
+			fmt.Printf("\t[LOG] Applying effect: %s (value: %d)\n", effect.effectType, effect.value)
 			switch effect.effectType {
 			case LookNextO2Cards:
 				fmt.Printf("%s NOT IMPLEMENTED", effect.effectType)
@@ -537,6 +617,9 @@ func (g *game) resolveAction(p *player, action action) {
 			case ReorderNextO2Cards:
 				fmt.Printf("%s NOT IMPLEMENTED", effect.effectType)
 			}
+		}
+		if effectCount == 0 {
+			fmt.Printf("\t[LOG] Item '%s' has no effects\n", itemToActivate.name)
 		}
 	}
 
