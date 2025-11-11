@@ -97,7 +97,7 @@ func NewGame(
 	}
 
 	for i := range g.parameters.values[NumberOfPlayers] {
-		player := NewPlayer(fmt.Sprintf("Player %d", i), g.parameters.values[NumberOfItemSlots])
+		player := NewPlayer(fmt.Sprintf("P%d", i+1), g.parameters.values[NumberOfItemSlots])
 
 		player.OxygenCards = g.GenerateOxygenDeck()
 
@@ -120,32 +120,53 @@ func (g *game) Run(numberOfGames int) {
 			p := g.GetActualPlayer()
 
 			fmt.Printf("Player '%s' start round\n", p.Id)
+			fmt.Printf("Player '%s' dive level %d\n", p.Id, p.DiveLevel)
+			fmt.Printf("Player '%s' inventory %+v\n", p.Id, p.Inventory)
 
 			//BREATH
 			cards := p.Breath()
-			p.Discard(cards)
+			printCards(*p, cards, "Breath:")
+			for _, card := range cards {
+				if card.GetType() == PanicType {
+					p.HandCards = append(p.HandCards, card)
+				} else {
+					p.DiscardedCards = append(p.DiscardedCards, card)
+				}
+			}
 			if p.IsDead() {
 				g.state.NextPlayer()
 				continue
 			}
 
+			printCards(*p, p.HandCards, "Hand:")
+
 			//CHECK PANIC
 			effects := p.CheckPanic()
 			if len(effects) > 0 {
-				g.ApplyEffect(g.state.Players[g.state.ActualPlayer], effects)
+				fmt.Printf("Player '%s' - Apply Effects: %+v\n", p.Id, effects)
+				g.ApplyEffect(&g.state.Players[g.state.ActualPlayer], effects)
 			}
 
 			//CHECK PLAYER EFFECTS
 			availableActions := p.CheckPlayerEffects()
+			fmt.Printf("Player '%s' - Available Actions: %+v\n", p.Id, availableActions)
 
 			//DECIDE ACTION TO DO
 			actionToDo := p.DecideActionToDo(g.state, availableActions)
+			fmt.Printf("Player '%s' - Action To Do: %+v\n", p.Id, actionToDo)
 
 			//RESOLVE ACTION
 			g.resolveAction(p, actionToDo)
+			fmt.Printf("Player '%s' - Action resolved\n", p.Id)
+
+			printCards(*p, p.HandCards, "Hand:")
 
 			//CHECK PANIC
-			p.CheckPanic()
+			effects = p.CheckPanic()
+			if len(effects) > 0 {
+				fmt.Printf("Player '%s' - Apply Effects: %+v\n", p.Id, effects)
+				g.ApplyEffect(&g.state.Players[g.state.ActualPlayer], effects)
+			}
 
 			fmt.Printf("Player '%s' end round\n", p.Id)
 		}
@@ -156,8 +177,8 @@ func (g *game) Run(numberOfGames int) {
 	}
 }
 
-func (g game) GetActualPlayer() player {
-	return g.state.Players[g.state.ActualPlayer]
+func (g game) GetActualPlayer() *player {
+	return &g.state.Players[g.state.ActualPlayer]
 }
 
 func (g *game) IsDavyJonesIsDead() bool {
@@ -228,7 +249,7 @@ func (g *game) GenerateOxygenDeck() []card {
 	return deck
 }
 
-func (g *game) ApplyEffect(p player, effects []panicEffect) {
+func (g *game) ApplyEffect(p *player, effects []panicEffect) {
 	for _, effect := range effects {
 		switch effect.effectType {
 		case MoveUp:
@@ -258,8 +279,17 @@ func (g *game) ApplyEffect(p player, effects []panicEffect) {
 			}
 		case MustCalmDown:
 			p.ActiveEffects[HaveToCalmDown] = effect.value
-		case ExchangeRandomCard:
-			fmt.Println("ExchangeRandomCard TO BE IMPLEMENTED")
+		case MoveToFreeLevel:
+			if p.DiveLevel > 1 {
+				for destinationLevel := p.DiveLevel - 1; destinationLevel <= 1; destinationLevel-- {
+					for _, player := range g.state.Players {
+						if player.Id != p.Id && player.DiveLevel == destinationLevel {
+							continue
+						}
+					}
+				}
+			}
+
 		case DropTreasureToken:
 			for i := 0; i < effect.value; i++ {
 				item := p.Inventory[i]
@@ -305,7 +335,7 @@ func (g *game) ApplyEffect(p player, effects []panicEffect) {
 	}
 }
 
-func (g *game) resolveAction(p player, action action) {
+func (g *game) resolveAction(p *player, action action) {
 
 	switch action.actionType {
 
@@ -364,11 +394,11 @@ func (g *game) resolveAction(p player, action action) {
 			}
 		}
 		discardedCard := 0
-		for i, panicCard := range p.HandCards {
-			reader := bufio.NewScanner(os.Stdin)
+		for discardedCard < 3 || len(p.HandCards) == 0 {
+			for i, panicCard := range p.HandCards {
+				reader := bufio.NewScanner(os.Stdin)
 
-			for discardedCard < 3 || len(p.HandCards) == 0 {
-				fmt.Printf("Do you want to keep panic card '%s'? (Y/N): ", panicCard.GetName())
+				fmt.Printf("Do you want to discard panic card '%s'? (Y/N): ", panicCard.GetName())
 				reader.Scan()
 				answer := strings.TrimSpace(strings.ToUpper(reader.Text()))
 
@@ -397,7 +427,7 @@ func (g *game) resolveAction(p player, action action) {
 			reader := bufio.NewScanner(os.Stdin)
 
 			for discardedCard < action.params[AscendLevels]+1 || len(p.HandCards) == 0 {
-				fmt.Printf("Do you want to keep panic card '%s'? (Y/N): ", panicCard.GetName())
+				fmt.Printf("Do you want to discard panic card '%s'? (Y/N): ", panicCard.GetName())
 				reader.Scan()
 				answer := strings.TrimSpace(strings.ToUpper(reader.Text()))
 
@@ -465,4 +495,11 @@ func (g *game) resolveAction(p player, action action) {
 		}
 	}
 
+}
+
+func printCards(p player, cards []card, message string) {
+	fmt.Println(message)
+	for _, card := range cards {
+		fmt.Printf("\tPlayer %s card: %s\n", p.Id, card.GetName())
+	}
 }

@@ -93,27 +93,33 @@ func (p player) DecideActionToDo(gameState state, availableActions []actionType)
 			value, err := strconv.Atoi(readActionParam[1])
 			if err != nil {
 				fmt.Println("Action argument must be an integer")
+				continue
 			}
 			if value < 1 || value > 3 {
 				fmt.Println("Action argument must be between 1 and 3")
+				continue
 			}
 			return NewAction(Ascend, map[actionParam]int{AscendLevels: value})
 		case "D":
 			value, err := strconv.Atoi(readActionParam[1])
 			if err != nil {
 				fmt.Println("Action argument must be an integer")
+				continue
 			}
 			if value < 1 || value > 3 {
 				fmt.Println("Action argument must be between 1 and 3")
+				continue
 			}
 			return NewAction(Dive, map[actionParam]int{DiveLevels: value})
 		case "E":
 			value, err := strconv.Atoi(readActionParam[1])
 			if err != nil {
 				fmt.Println("Action argument must be an integer")
+				continue
 			}
 			if value < 1 || value > 3 {
 				fmt.Println("Action argument must be between 1 and 3")
+				continue
 			}
 			return NewAction(Explore, map[actionParam]int{ExploreTime: value})
 		case "C":
@@ -122,15 +128,18 @@ func (p player) DecideActionToDo(gameState state, availableActions []actionType)
 			value, err := strconv.Atoi(readActionParam[1])
 			if err != nil {
 				fmt.Println("Action argument must be an integer")
+				continue
 			}
 			if value < 1 || value > len(p.Inventory) {
 				fmt.Println("Action argument must be between 1 and 3")
+				continue
 			}
 			return NewAction(UseObject, map[actionParam]int{ItemToUse: value})
 		case "H":
 			return NewAction(UseObject, map[actionParam]int{})
 		default:
 			fmt.Println(fmt.Printf("'%s' is not a valid action", readActionParam[0]))
+			continue
 		}
 	}
 

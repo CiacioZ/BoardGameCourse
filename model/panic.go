@@ -26,7 +26,7 @@ const (
 	DiscardO2                 panicEffectType = "DISCARD_O2"
 	DropObject                panicEffectType = "DROP_OBJECT"
 	MustCalmDown              panicEffectType = "MUST_CALM_DOWN"
-	ExchangeRandomCard        panicEffectType = "EXCHANGE_RANDOM_CARD"
+	MoveToFreeLevel           panicEffectType = "MOVE_TO_FREE_LEVEL"
 	DropTreasureToken         panicEffectType = "DROP_TREASURE_TOKEN"
 	DropAmulet                panicEffectType = "DROP_AMULET"
 	DropEverything            panicEffectType = "DROP_EVERYTHING"
@@ -181,13 +181,13 @@ var blackDeepLevels = []panicEffect{
 
 var purpleLowLevels = []panicEffect{
 	{
-		effectType: ExchangeRandomCard,
+		effectType: MoveToFreeLevel,
 		value:      1,
 	},
 }
 var purpleMidLevels = []panicEffect{
 	{
-		effectType: ExchangeRandomCard,
+		effectType: MoveToFreeLevel,
 		value:      1,
 	},
 	{
@@ -197,7 +197,7 @@ var purpleMidLevels = []panicEffect{
 }
 var purpleDeepLevels = []panicEffect{
 	{
-		effectType: ExchangeRandomCard,
+		effectType: MoveToFreeLevel,
 		value:      1,
 	},
 	{
