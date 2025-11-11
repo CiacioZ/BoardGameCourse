@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -81,44 +82,44 @@ func (p player) DecideActionToDo(gameState state, availableActions []actionType)
 	reader := bufio.NewScanner(os.Stdin)
 
 	for {
-		fmt.Printf("Player '%s'choose action: A=ascend, D=dive, E=explore, C=calm, U=use object H=Hold\n", p.Id)
-		fmt.Printf("Answer:")
+		fmt.Printf("\tChoose action: A=ascend, D=dive, E=explore, C=calm, U=use object H=Hold\n")
+		fmt.Printf("\tAnswer:")
 		reader.Scan()
 		answer := strings.TrimSpace(strings.ToUpper(reader.Text()))
 
-		readActionParam := strings.Split(answer, "-")
+		readActionParam := strings.Split(answer, " ")
 
 		switch strings.ToUpper(readActionParam[0]) {
 		case "A":
 			value, err := strconv.Atoi(readActionParam[1])
 			if err != nil {
-				fmt.Println("Action argument must be an integer")
+				fmt.Printf("\tAction argument must be an integer\n")
 				continue
 			}
 			if value < 1 || value > 3 {
-				fmt.Println("Action argument must be between 1 and 3")
+				fmt.Printf("\tAction argument must be between 1 and 3\n")
 				continue
 			}
 			return NewAction(Ascend, map[actionParam]int{AscendLevels: value})
 		case "D":
 			value, err := strconv.Atoi(readActionParam[1])
 			if err != nil {
-				fmt.Println("Action argument must be an integer")
+				fmt.Printf("\tAction argument must be an integer\n")
 				continue
 			}
 			if value < 1 || value > 3 {
-				fmt.Println("Action argument must be between 1 and 3")
+				fmt.Printf("\tAction argument must be between 1 and 3\n")
 				continue
 			}
 			return NewAction(Dive, map[actionParam]int{DiveLevels: value})
 		case "E":
 			value, err := strconv.Atoi(readActionParam[1])
 			if err != nil {
-				fmt.Println("Action argument must be an integer")
+				fmt.Printf("\tAction argument must be an integer\n")
 				continue
 			}
 			if value < 1 || value > 3 {
-				fmt.Println("Action argument must be between 1 and 3")
+				fmt.Printf("\tAction argument must be between 1 and 3\n")
 				continue
 			}
 			return NewAction(Explore, map[actionParam]int{ExploreTime: value})
@@ -127,18 +128,18 @@ func (p player) DecideActionToDo(gameState state, availableActions []actionType)
 		case "U":
 			value, err := strconv.Atoi(readActionParam[1])
 			if err != nil {
-				fmt.Println("Action argument must be an integer")
+				fmt.Printf("\tAction argument must be an integer\n")
 				continue
 			}
 			if value < 1 || value > len(p.Inventory) {
-				fmt.Println("Action argument must be between 1 and 3")
+				fmt.Printf("\tAction argument must be between 1 and 3\n")
 				continue
 			}
 			return NewAction(UseObject, map[actionParam]int{ItemToUse: value})
 		case "H":
 			return NewAction(UseObject, map[actionParam]int{})
 		default:
-			fmt.Println(fmt.Printf("'%s' is not a valid action", readActionParam[0]))
+			fmt.Printf("\t'%s' is not a valid action\n", readActionParam[0])
 			continue
 		}
 	}
@@ -149,7 +150,7 @@ func (p player) IsDead() bool {
 	return len(p.OxygenCards) == 0
 }
 
-func (p player) CheckPanic() []panicEffect {
+func (p *player) CheckPanic() []panicEffect {
 	panicEffects := make([]panicEffect, 0)
 
 	panics := map[panicType]int{
@@ -162,10 +163,6 @@ func (p player) CheckPanic() []panicEffect {
 	}
 
 	for _, card := range p.HandCards {
-		if card.GetType() == ItemType {
-			continue
-		}
-
 		panicCard := card.(panicCard)
 		for _, panicType := range panicCard.panicTypes {
 			panics[panicType] = panics[panicType] + 1
@@ -174,7 +171,16 @@ func (p player) CheckPanic() []panicEffect {
 
 	for panicType, counter := range panics {
 		if counter >= 3 {
+			fmt.Printf("\tActivate level %d of '%s' panic type\n", p.DiveLevel, panicType)
 			panicEffects = append(panicEffects, panicActivationEffects[panicType][p.DiveLevel]...)
+
+			// Iterate backwards to safely remove elements
+			for i := len(p.HandCards) - 1; i >= 0; i-- {
+				card := p.HandCards[i]
+				if slices.Contains(card.(panicCard).panicTypes, panicType) {
+					p.HandCards = append(p.HandCards[:i], p.HandCards[i+1:]...)
+				}
+			}
 		}
 	}
 

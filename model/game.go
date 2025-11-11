@@ -112,20 +112,27 @@ func (g *game) Run(numberOfGames int) {
 	g.state.Round = 1
 
 	for !g.IsGameEnded() {
-		fmt.Printf("Start Round: %d\n", g.state.Round)
+		fmt.Printf("Start round: %d\n", g.state.Round)
 
 		for i := 0; i < len(g.state.Players); i++ {
 			g.state.ActualPlayer = i
 
 			p := g.GetActualPlayer()
 
-			fmt.Printf("Player '%s' start round\n", p.Id)
-			fmt.Printf("Player '%s' dive level %d\n", p.Id, p.DiveLevel)
-			fmt.Printf("Player '%s' inventory %+v\n", p.Id, p.Inventory)
+			fmt.Printf("Player '%s':\n", p.Id)
+
+			fmt.Printf("\tStart turn\n")
+			fmt.Printf("\tLevel %d\n", p.DiveLevel)
+			fmt.Printf("\tInventory:\n")
+			for _, item := range p.Inventory {
+				if item != nil {
+					fmt.Printf("\t\t%s\n", item.name)
+				}
+			}
 
 			//BREATH
 			cards := p.Breath()
-			printCards(*p, cards, "Breath:")
+			printCards(cards, "\tBreath:\n")
 			for _, card := range cards {
 				if card.GetType() == PanicType {
 					p.HandCards = append(p.HandCards, card)
@@ -138,40 +145,52 @@ func (g *game) Run(numberOfGames int) {
 				continue
 			}
 
-			printCards(*p, p.HandCards, "Hand:")
+			printCards(p.HandCards, "\tHand:\n")
 
 			//CHECK PANIC
 			effects := p.CheckPanic()
 			if len(effects) > 0 {
-				fmt.Printf("Player '%s' - Apply Effects: %+v\n", p.Id, effects)
+				fmt.Printf("\tApply Effects:\n")
+				for _, effect := range effects {
+					fmt.Printf("\t\t%s", effect.effectType)
+				}
 				g.ApplyEffect(&g.state.Players[g.state.ActualPlayer], effects)
 			}
 
 			//CHECK PLAYER EFFECTS
 			availableActions := p.CheckPlayerEffects()
-			fmt.Printf("Player '%s' - Available Actions: %+v\n", p.Id, availableActions)
+			fmt.Printf("\tAvailable Actions: %+v\n", availableActions)
 
 			//DECIDE ACTION TO DO
 			actionToDo := p.DecideActionToDo(g.state, availableActions)
-			fmt.Printf("Player '%s' - Action To Do: %+v\n", p.Id, actionToDo)
+			fmt.Printf("\tAction To Do: %+v\n", actionToDo)
 
 			//RESOLVE ACTION
 			g.resolveAction(p, actionToDo)
-			fmt.Printf("Player '%s' - Action resolved\n", p.Id)
+			fmt.Printf("\tAction resolved\n")
 
-			printCards(*p, p.HandCards, "Hand:")
+			fmt.Printf("\tInventory:\n")
+			for _, item := range p.Inventory {
+				if item != nil {
+					fmt.Printf("\t\t%s\n", item.name)
+				}
+			}
+			printCards(p.HandCards, "\tHand:\n")
 
 			//CHECK PANIC
 			effects = p.CheckPanic()
 			if len(effects) > 0 {
-				fmt.Printf("Player '%s' - Apply Effects: %+v\n", p.Id, effects)
+				fmt.Printf("\tApply Effects:\n")
+				for _, effect := range effects {
+					fmt.Printf("\t\t%s\n", effect.effectType)
+				}
 				g.ApplyEffect(&g.state.Players[g.state.ActualPlayer], effects)
 			}
 
-			fmt.Printf("Player '%s' end round\n", p.Id)
+			fmt.Printf("\tEnd turn\n\n")
 		}
 
-		fmt.Printf("End Round: %d\n", g.state.Round)
+		fmt.Printf("End round: %d\n", g.state.Round)
 
 		g.state.NextRound()
 	}
@@ -270,9 +289,9 @@ func (g *game) ApplyEffect(p *player, effects []panicEffect) {
 			cards := p.Draw(effect.value)
 			p.Discard(cards)
 		case DropObject:
-			for i := 0; i < effect.value; i++ {
+			for i := 0; i < effect.value && i < len(p.Inventory); i++ {
 				item := p.Inventory[i]
-				if item.itemType == Utility {
+				if item != nil && item.itemType == Utility {
 					p.DiscardedObjects = append(p.DiscardedObjects, *item)
 					p.Inventory[i] = nil
 				}
@@ -291,32 +310,35 @@ func (g *game) ApplyEffect(p *player, effects []panicEffect) {
 			}
 
 		case DropTreasureToken:
-			for i := 0; i < effect.value; i++ {
+			dropped := 0
+			for i := 0; i < len(p.Inventory) && dropped < effect.value; i++ {
 				item := p.Inventory[i]
-				if item.itemType == TreasureToken {
+				if item != nil && item.itemType == TreasureToken {
 					p.DiscardedObjects = append(p.DiscardedObjects, *item)
 					p.Inventory[i] = nil
+					dropped++
 				}
 			}
 		case DropAmulet:
-			for i := 0; i < effect.value; i++ {
+			for i := 0; i < effect.value && i < len(p.Inventory); i++ {
 				item := p.Inventory[i]
-				if item.itemType == Amulets {
+				if item != nil && item.itemType == Amulets {
 					p.DiscardedObjects = append(p.DiscardedObjects, *item)
 					p.Inventory[i] = nil
 				}
 			}
 		case DropEverything:
-			for i := 0; i < effect.value; i++ {
+			for i := 0; i < effect.value && i < len(p.Inventory); i++ {
 				item := p.Inventory[i]
-				p.DiscardedObjects = append(p.DiscardedObjects, *item)
-				p.Inventory[i] = nil
-
+				if item != nil {
+					p.DiscardedObjects = append(p.DiscardedObjects, *item)
+					p.Inventory[i] = nil
+				}
 			}
 		case DropEverythingButAmulets:
-			for i := 0; i < effect.value; i++ {
+			for i := 0; i < effect.value && i < len(p.Inventory); i++ {
 				item := p.Inventory[i]
-				if item.itemType != Amulets {
+				if item != nil && item.itemType != Amulets {
 					p.DiscardedObjects = append(p.DiscardedObjects, *item)
 					p.Inventory[i] = nil
 				}
@@ -358,20 +380,19 @@ func (g *game) resolveAction(p *player, action action) {
 				} else {
 					reader := bufio.NewScanner(os.Stdin)
 
-					for {
-						fmt.Printf("Do you want to keep item '%s' and drop item '%s'? (Y/N): ", item.name, slot.name)
-						reader.Scan()
-						answer := strings.TrimSpace(strings.ToUpper(reader.Text()))
+					fmt.Printf("\tDo you want to keep item '%s' and drop item '%s'? (Y/N): ", item.name, slot.name)
+					reader.Scan()
+					answer := strings.TrimSpace(strings.ToUpper(reader.Text()))
 
-						if answer == "Y" {
-							p.Inventory[i] = &item
-							break
-						} else if answer == "N" {
-							continue
-						} else {
-							fmt.Println("Please answer with Y or N.")
-						}
+					if answer == "Y" {
+						p.Inventory[i] = &item
+						break
+					} else if answer == "N" {
+						continue
+					} else {
+						fmt.Printf("\tPlease answer with Y or N.\n")
 					}
+
 				}
 			}
 		}
@@ -391,26 +412,39 @@ func (g *game) resolveAction(p *player, action action) {
 		for _, card := range cards {
 			if card.GetType() == PanicType {
 				p.HandCards = append(p.HandCards, card)
+			} else {
+				p.DiscardedCards = append(p.DiscardedCards, card)
 			}
 		}
 		discardedCard := 0
-		for discardedCard < 3 || len(p.HandCards) == 0 {
-			for i, panicCard := range p.HandCards {
+		for discardedCard < 3 && len(p.HandCards) > 0 {
+			removed := false
+			// Iterate backwards to safely remove elements
+			for i := len(p.HandCards) - 1; i >= 0; i-- {
+				panicCard := p.HandCards[i]
 				reader := bufio.NewScanner(os.Stdin)
 
-				fmt.Printf("Do you want to discard panic card '%s'? (Y/N): ", panicCard.GetName())
-				reader.Scan()
-				answer := strings.TrimSpace(strings.ToUpper(reader.Text()))
+				for {
+					fmt.Printf("\tDo you want to discard panic card '%s'? (Y/N): ", panicCard.GetName())
+					reader.Scan()
+					answer := strings.TrimSpace(strings.ToUpper(reader.Text()))
 
-				if answer == "Y" {
-					discardedCard++
-					p.DiscardedCards = append(p.DiscardedCards, panicCard)
-					p.HandCards = append(p.HandCards[:i], p.HandCards[i+1:]...)
-					continue
-				} else if answer == "N" {
-					continue
-				} else {
-					fmt.Println("Please answer with Y or N.")
+					if answer == "Y" {
+						discardedCard++
+						p.DiscardedCards = append(p.DiscardedCards, panicCard)
+						p.HandCards = append(p.HandCards[:i], p.HandCards[i+1:]...)
+						removed = true
+						break // Break from input loop
+					} else if answer == "N" {
+						break // Break from input loop to continue to next card
+					} else {
+						fmt.Printf("\tPlease answer with Y or N.\n")
+						// Continue loop to ask again
+					}
+				}
+				// If we removed a card, break to restart the outer loop
+				if removed {
+					break
 				}
 			}
 		}
@@ -423,23 +457,34 @@ func (g *game) resolveAction(p *player, action action) {
 			}
 		}
 		discardedCard := 0
-		for i, panicCard := range p.HandCards {
-			reader := bufio.NewScanner(os.Stdin)
+		for discardedCard < action.params[AscendLevels]+1 && len(p.HandCards) > 0 {
+			removed := false
+			// Iterate backwards to safely remove elements
+			for i := len(p.HandCards) - 1; i >= 0; i-- {
+				panicCard := p.HandCards[i]
+				reader := bufio.NewScanner(os.Stdin)
 
-			for discardedCard < action.params[AscendLevels]+1 || len(p.HandCards) == 0 {
-				fmt.Printf("Do you want to discard panic card '%s'? (Y/N): ", panicCard.GetName())
-				reader.Scan()
-				answer := strings.TrimSpace(strings.ToUpper(reader.Text()))
+				for {
+					fmt.Printf("\tDo you want to discard panic card '%s'? (Y/N): ", panicCard.GetName())
+					reader.Scan()
+					answer := strings.TrimSpace(strings.ToUpper(reader.Text()))
 
-				if answer == "Y" {
-					discardedCard++
-					p.DiscardedCards = append(p.DiscardedCards, panicCard)
-					p.HandCards = append(p.HandCards[:i], p.HandCards[i+1:]...)
-					continue
-				} else if answer == "N" {
-					continue
-				} else {
-					fmt.Println("Please answer with Y or N.")
+					if answer == "Y" {
+						discardedCard++
+						p.DiscardedCards = append(p.DiscardedCards, panicCard)
+						p.HandCards = append(p.HandCards[:i], p.HandCards[i+1:]...)
+						removed = true
+						break // Break from input loop
+					} else if answer == "N" {
+						break // Break from input loop to continue to next card
+					} else {
+						fmt.Printf("\tPlease answer with Y or N.\n")
+						// Continue loop to ask again
+					}
+				}
+				// If we removed a card, break to restart the outer loop
+				if removed {
+					break
 				}
 			}
 		}
@@ -497,9 +542,9 @@ func (g *game) resolveAction(p *player, action action) {
 
 }
 
-func printCards(p player, cards []card, message string) {
+func printCards(cards []card, message string) {
 	fmt.Println(message)
 	for _, card := range cards {
-		fmt.Printf("\tPlayer %s card: %s\n", p.Id, card.GetName())
+		fmt.Printf("\t\t%s\n", card.GetName())
 	}
 }
