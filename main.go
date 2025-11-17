@@ -13,11 +13,12 @@ type O2 struct {
 }
 
 type player struct {
-	Id       string
-	O2       []O2
-	Ability  int
-	Treasure int
-	Panic    int
+	Id              string
+	O2              []O2
+	Ability         int
+	Treasure        int
+	Panic           int
+	PanicTollerance int
 }
 
 type object struct {
@@ -44,7 +45,7 @@ func main() {
 		itemsDeck[i] = item
 	}
 
-	o2Deck := make([]O2, 30)
+	o2Deck := make([]O2, 40)
 	for i := range len(o2Deck) {
 
 		o2 := O2{}
@@ -52,15 +53,19 @@ func main() {
 		switch (i / 10) + 1 {
 		case 1:
 			o2.Type = "ENCOUNTER"
-			o2.Value = randomizer.Intn(10) + 1
+			o2.Value = i + 1
 			o2.Treasure = 1
 		case 2:
 			o2.Type = "EXPLORATION"
-			o2.Value = randomizer.Intn(10) + 1
+			o2.Value = (i - 10) + 1
 			o2.Treasure = 1
 		case 3:
 			o2.Type = "UNEXPECTED"
-			o2.Value = randomizer.Intn(10) + 1
+			o2.Value = (i - 20) + 1
+			o2.Treasure = 1
+		case 4:
+			o2.Type = "SOPRANNATURAL"
+			o2.Value = (i - 30) + 1
 			o2.Treasure = 1
 		}
 
@@ -71,10 +76,11 @@ func main() {
 	players := make([]player, NumberOfPlayers)
 	for i := range NumberOfPlayers {
 		player := player{
-			Id:       fmt.Sprintf("P%d", i),
-			Treasure: 0,
-			Ability:  5,
-			O2:       make([]O2, len(o2Deck)),
+			Id:              fmt.Sprintf("P%d", i+1),
+			Treasure:        0,
+			Ability:         5,
+			PanicTollerance: 3,
+			O2:              make([]O2, len(o2Deck)),
 		}
 
 		copy(player.O2, o2Deck)
@@ -117,10 +123,55 @@ func main() {
 					for _, item := range items {
 						players[i].Treasure += item.Value
 						fmt.Printf("\t\t\tBREATH RESOLVED: treasure = %d\n", players[i].Treasure)
+						if players[i].Panic > 0 {
+							players[i].Panic -= 1
+						}
 					}
 				} else {
 					players[i].Panic += 1
 					fmt.Printf("\t\t\tBREATH NOT RESOLVED: panic = %d\n", players[i].Panic)
+					if players[i].Panic == players[i].PanicTollerance {
+						fmt.Printf("\t\t\tPANIC!\n")
+						players[i].Panic = 0
+						players[i].Treasure = 0
+					}
+				}
+
+				//TAKE ACTION
+				for a := 1; a <= 3; a++ {
+					if players[i].Panic == players[i].PanicTollerance-1 {
+						if a == 1 {
+							fmt.Printf("\t\t\tACTION 'CALM_DOWN'\n")
+							if players[i].Panic > 0 {
+								players[i].Panic -= 1
+							}
+						} else {
+							break
+						}
+					}
+					cards, newO2 := draw(1, players[i].O2)
+					if len(cards) == 0 {
+						break
+					}
+
+					players[i].O2 = newO2
+					if players[i].Ability > cards[0].Value {
+						items, newItems := draw(cards[0].Treasure, gameItems)
+						gameItems = newItems
+
+						for _, item := range items {
+							players[i].Treasure += item.Value
+							fmt.Printf("\t\t\tACTION '%s' RESOLVED: treasure = %d\n", cards[0].Type, players[i].Treasure)
+						}
+						players[i].Panic -= 1
+					} else {
+						players[i].Panic += 1
+						fmt.Printf("\t\t\tACTION '%s' NOT RESOLVED: panic = %d\n", cards[0].Type, players[i].Panic)
+						if players[i].Panic == players[i].PanicTollerance {
+							fmt.Printf("\t\t\tPANIC!\n")
+							players[i].Panic = 0
+						}
+					}
 				}
 
 				fmt.Printf("\t\tEND TURN FOR %s\n", players[i].Id)
@@ -133,7 +184,9 @@ func main() {
 
 		fmt.Printf("END GAME %d\n", game)
 
-		fmt.Printf("WINNER: %s\n", lastPlayerAlive(players))
+		winner, treasure := winner(players)
+
+		fmt.Printf("WINNER: %s has %d treasure points\n", winner, treasure)
 	}
 }
 
@@ -151,14 +204,17 @@ func playersAlive(players []player) int {
 
 }
 
-func lastPlayerAlive(players []player) string {
+func winner(players []player) (string, int) {
+	bestTreasure := 0
+	playerId := ""
 	for _, player := range players {
-		if len(player.O2) > 0 {
-			return player.Id
+		if player.Treasure > bestTreasure {
+			bestTreasure = player.Treasure
+			playerId = player.Id
 		}
 	}
 
-	return ""
+	return playerId, bestTreasure
 }
 
 func draw[T any](numberOfElementsToDraw int, slice []T) ([]T, []T) {
