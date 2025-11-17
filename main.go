@@ -6,6 +6,9 @@ import (
 	"time"
 )
 
+var NumberOfGames = 10
+var NumberOfPlayers = 2
+
 type O2 struct {
 	Type     string
 	Value    int
@@ -20,24 +23,60 @@ type player struct {
 	PanicTollerance map[string]int
 	RiskTollerance  int
 	Treasure        int
+	Inventory       []item
 }
 
-type object struct {
+type item struct {
 	Type  string
 	Value int
 }
 
-var NumberOfGames = 1000
-var NumberOfPlayers = 4
+type objective struct {
+	Type         string
+	GameDuration int
+	WinCondition []itemCondition
+}
+
+type itemCondition struct {
+	Item  string
+	Count int
+}
 
 func main() {
 
 	randomizer := rand.New(rand.NewSource(time.Now().UnixNano()))
 
-	itemsDeck := make([]object, 30+5*NumberOfPlayers)
+	objectives := []objective{
+		{
+			Type: "MAX_TREASURES",
+		},
+		/*
+			{
+				Type:         "SURVIVE_DJ",
+				GameDuration: 10,
+				WinCondition: []itemCondition{
+					{
+						Item:  "AMULET",
+						Count: 1,
+					},
+				},
+			},
+			{
+				Type: "KILL_DJ",
+				WinCondition: []itemCondition{
+					{
+						Item:  "AMULET",
+						Count: NumberOfPlayers - 1,
+					},
+				},
+			},
+		*/
+	}
+
+	itemsDeck := make([]item, 30+5*NumberOfPlayers)
 	for i := range len(itemsDeck) {
 
-		item := object{
+		item := item{
 			Type:  "TREASURE",
 			Value: (i / 10) + 1,
 		}
@@ -74,7 +113,6 @@ func main() {
 	}
 
 	gamesWon := make(map[string]int)
-	winnersTreasures := make(map[int]int)
 
 	players := make([]player, NumberOfPlayers)
 	for i := range NumberOfPlayers {
@@ -116,7 +154,7 @@ func main() {
 
 	for game := range NumberOfGames {
 
-		gameItems := make([]object, len(itemsDeck))
+		gameItems := make([]item, len(itemsDeck))
 
 		copy(gameItems, itemsDeck)
 
@@ -144,8 +182,16 @@ func main() {
 
 		fmt.Printf("START GAME %d\n", game+1)
 
+		objective := randomizer.Intn(len(objectives))
+
+		fmt.Printf("OBJECTIVE: %s\n", objectives[objective].Type)
+
 		round := 1
 		for playersAlive(players) > 1 && len(gameItems) > 0 {
+
+			if objectives[objective].GameDuration == round {
+				break
+			}
 
 			fmt.Printf("\tSTART ROUND %d\n", round)
 
@@ -263,17 +309,17 @@ func main() {
 			round++
 		}
 
+		fmt.Printf("ITEMS LEFT: %d\n", len(gameItems))
+
 		fmt.Printf("END GAME %d\n", game+1)
 
-		winner, treasure := winner(players)
+		winner := winner(players, objectives[objective])
 
-		fmt.Printf("WINNER: %s has %d treasure points\n", winner, treasure)
+		fmt.Printf("WINNER: %s\n", winner)
 		gamesWon[winner] = gamesWon[winner] + 1
-		winnersTreasures[game+1] = treasure
 	}
 
 	fmt.Println(gamesWon)
-	//fmt.Println(winnersTreasures)
 }
 
 func playersAlive(players []player) int {
@@ -290,21 +336,25 @@ func playersAlive(players []player) int {
 
 }
 
-func winner(players []player) (string, int) {
-	bestTreasure := 0
-	playerId := ""
-	for _, player := range players {
-		if player.Treasure > bestTreasure {
-			bestTreasure = player.Treasure
-			playerId = player.Id
+func winner(players []player, objective objective) string {
+	switch objective.Type {
+	case "MAX_TREASURES":
+		bestTreasure := 0
+		playerId := ""
+		for _, player := range players {
+			if player.Treasure > bestTreasure {
+				bestTreasure = player.Treasure
+				playerId = player.Id
+			}
 		}
+
+		return playerId
+	case "SURVIVE_DJ":
+
+	case "KILL_DY":
 	}
 
-	if playerId == "" {
-		fmt.Println("ITS A DRAW!")
-	}
-
-	return playerId, bestTreasure
+	return ""
 }
 
 func draw[T any](numberOfElementsToDraw int, slice []T) ([]T, []T) {
