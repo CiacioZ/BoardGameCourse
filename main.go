@@ -3,16 +3,17 @@ package main
 import (
 	"fmt"
 	"math/rand"
+	"strings"
 	"time"
 )
 
-var NumberOfGames = 10
+var NumberOfGames = 1
 var NumberOfPlayers = 2
 
 type O2 struct {
-	Type     string
-	Value    int
-	Treasure int
+	Type       string
+	Value      int
+	ItemReward int
 }
 
 type player struct {
@@ -27,8 +28,7 @@ type player struct {
 }
 
 type item struct {
-	Type  string
-	Value int
+	Type string
 }
 
 type objective struct {
@@ -46,42 +46,91 @@ func main() {
 
 	randomizer := rand.New(rand.NewSource(time.Now().UnixNano()))
 
-	objectives := []objective{
-		{
-			Type: "MAX_TREASURES",
-		},
-		/*
-			{
-				Type:         "SURVIVE_DJ",
-				GameDuration: 10,
-				WinCondition: []itemCondition{
-					{
-						Item:  "AMULET",
-						Count: 1,
-					},
-				},
-			},
-			{
-				Type: "KILL_DJ",
-				WinCondition: []itemCondition{
-					{
-						Item:  "AMULET",
-						Count: NumberOfPlayers - 1,
-					},
-				},
-			},
-		*/
+	commonItemsCount := 8
+	uncommonItemsCount := 8
+	rareItemsCount := 4
+	veryRareItemsCount := 2
+	legendaryItemsCount := 1
+
+	commonItems := []string{
+		"Coltello",            // +2 agli incontri
+		"Torcia",              // +2 alle esplorazioni
+		"Barometro",           // +2 agli imprevisti ambientali
+		"1 moneta",            // tesoro
+		"Sacca maggiorata",    // aggiunge uno slot in più all'inventario
+		"Maschera migliorata", // +1 alle esplorazioni
+		"Pinne migliorate",    // +1 agli imprevisti ambientali
+		"Bombola migliorata",  // recupera una carta ossigeno scartata
 	}
 
-	itemsDeck := make([]item, 30+5*NumberOfPlayers)
-	for i := range len(itemsDeck) {
+	uncommonItems := []string{
+		"Coltello migliorato",    // +3 agli incontri
+		"Torcia migliorata",      // +3 alle esplorazioni
+		"Barometro migliorato",   // +3 agli imprevisti ambientali
+		"Fiocina",                // +4 agli incontri
+		"2 monete",               // tesoro
+		"Bombola maggiorata",     // recupera 2 carte ossigeno scartate
+		"amuleto di poseidone",   // +2 agli incontri soprannaturali
+		"Respiratore migliorato", // respira gratis
+	}
 
-		item := item{
-			Type:  "TREASURE",
-			Value: (i / 10) + 1,
+	rareItems := []string{
+		"Bombola aggiuntiva",    // recupera 3 carte ossigeno scartate
+		"tridente di poseidone", // +2 agli incontri e agli imprevisti sovrannaturali
+		"Kit antistress",        // riduce di 2 un tipo di panico
+		"3 monete",              // tesoro
+	}
+
+	veryRareItems := []string{
+		"Sonar",    // Guarda le prossime 5 carte ossigeno e mettile nell'ordine che vuoi
+		"5 monete", // tesoro
+	}
+
+	legendaryItems := []string{
+		"Adrenalina", // Rirudce di 1 tutti i tipi di panico
+	}
+
+	/*
+		specialItems := []string{
+			"Amuleto DJ", // Serve a proteggersi da DJ
 		}
+	*/
 
-		itemsDeck[i] = item
+	itemsDeck := make([]item, 0)
+	for i := 0; i < commonItemsCount; i++ {
+
+		itemsDeck = append(itemsDeck, item{
+			Type: commonItems[i],
+		})
+
+		itemsDeck = append(itemsDeck, item{
+			Type: commonItems[i],
+		})
+
+	}
+
+	for i := 0; i < uncommonItemsCount; i++ {
+		itemsDeck = append(itemsDeck, item{
+			Type: uncommonItems[i],
+		})
+	}
+
+	for i := 0; i < rareItemsCount; i++ {
+		itemsDeck = append(itemsDeck, item{
+			Type: rareItems[i],
+		})
+	}
+
+	for i := 0; i < veryRareItemsCount; i++ {
+		itemsDeck = append(itemsDeck, item{
+			Type: veryRareItems[i],
+		})
+	}
+
+	for i := 0; i < legendaryItemsCount; i++ {
+		itemsDeck = append(itemsDeck, item{
+			Type: legendaryItems[i],
+		})
 	}
 
 	o2Deck := make([]O2, 40)
@@ -93,19 +142,19 @@ func main() {
 		case 1:
 			o2.Type = "ENCOUNTER"
 			o2.Value = i + 1
-			o2.Treasure = 1
+			o2.ItemReward = 1
 		case 2:
 			o2.Type = "ENVIRONMENT"
 			o2.Value = (i - 10) + 1
-			o2.Treasure = 1
+			o2.ItemReward = 1
 		case 3:
 			o2.Type = "TECHNICAL"
 			o2.Value = (i - 20) + 1
-			o2.Treasure = 1
+			o2.ItemReward = 1
 		case 4:
 			o2.Type = "SOPRANNATURAL"
 			o2.Value = (i - 30) + 1
-			o2.Treasure = 1
+			o2.ItemReward = 1
 		}
 
 		o2Deck[i] = o2
@@ -182,16 +231,8 @@ func main() {
 
 		fmt.Printf("START GAME %d\n", game+1)
 
-		objective := randomizer.Intn(len(objectives))
-
-		fmt.Printf("OBJECTIVE: %s\n", objectives[objective].Type)
-
 		round := 1
 		for playersAlive(players) > 1 && len(gameItems) > 0 {
-
-			if objectives[objective].GameDuration == round {
-				break
-			}
 
 			fmt.Printf("\tSTART ROUND %d\n", round)
 
@@ -212,12 +253,11 @@ func main() {
 				players[i].O2 = newO2
 				diceResult := throwDice(4, randomizer)
 				if players[i].Ability[cards[0].Type]+diceResult > cards[0].Value {
-					items, newItems := draw(cards[0].Treasure, gameItems)
+					items, newItems := draw(cards[0].ItemReward, gameItems)
 					gameItems = newItems
 
 					for _, item := range items {
-						players[i].Treasure += item.Value
-						fmt.Printf("\t\t\tBREATH RESOLVED %d + %d > %d: treasure = %d\n", players[i].Ability[cards[0].Type], diceResult, cards[0].Value, players[i].Treasure)
+						fmt.Printf("\t\t\tBREATH RESOLVED %d + %d > %d: found item = %s\n", players[i].Ability[cards[0].Type], diceResult, cards[0].Value, item.Type)
 						if players[i].Panic[cards[0].Type] > 0 {
 							players[i].Panic[cards[0].Type] -= 1
 						}
@@ -238,67 +278,60 @@ func main() {
 					if len(gameItems) == 0 {
 						break
 					}
-					calmDown := false
-					for panicType, value := range players[i].Panic {
-						if value == players[i].PanicTollerance[panicType]-players[i].RiskTollerance {
-							calmDown = true
-							if a == 1 {
-								diceResult := throwDice(4, randomizer)
-								if diceResult > players[i].Panic[panicType] {
-									fmt.Printf("\t\t\tACTION 'CALM_DOWN' '%s' SUCCESSFUL! %d > %d\n", panicType, diceResult, players[i].Panic[panicType])
-									players[i].Panic[panicType] -= 1
-								} else {
-									fmt.Printf("\t\t\tACTION 'CALM_DOWN' '%s' FAILED! %d <= %d\n", panicType, diceResult, players[i].Panic[panicType])
-									players[i].Panic[panicType] += 1
-									if players[i].Panic[cards[0].Type] == players[i].PanicTollerance[cards[0].Type] {
-										fmt.Printf("\t\t\t*** PANIC! ***\n")
-										players[i].Panic[cards[0].Type] = 0
-										players[i].Treasure = 0
-										break
-									}
-								}
-								break
-							} else {
-								break
+
+					pass := false
+					inputOk := false
+					for !inputOk || !pass {
+						var input string
+						fmt.Printf("\t\t\tCHOOSE ACTION: (E)xplore - (P)ass: \n")
+						fmt.Scanln(&input)
+
+						switch strings.ToLower(input) {
+						case "e":
+							inputOk = true
+							cards, newO2 := draw(1, players[i].O2)
+							if len(cards) == 0 {
+								pass = true
+
 							}
+
+							players[i].O2 = newO2
+							diceResult := throwDice(4, randomizer)
+							if players[i].Ability[cards[0].Type]+diceResult > cards[0].Value {
+								items, newItems := draw(cards[0].ItemReward, gameItems)
+								if len(items) == 0 {
+									pass = true
+								}
+								gameItems = newItems
+
+								for _, item := range items {
+									fmt.Printf("\t\t\tACTION '%s' RESOLVED %d + %d > %d: item found = %s\n", cards[0].Type, players[i].Ability[cards[0].Type], diceResult, cards[0].Value, item.Type)
+								}
+								if players[i].Panic[cards[0].Type] > 0 {
+									players[i].Panic[cards[0].Type] -= 1
+								}
+							} else {
+								players[i].Panic[cards[0].Type] += 1
+								fmt.Printf("\t\t\tACTION '%s' NOT RESOLVED %d + %d <= %d : panic = %d\n", cards[0].Type, players[i].Ability[cards[0].Type], diceResult, cards[0].Value, players[i].Panic[cards[0].Type])
+								if players[i].Panic[cards[0].Type] == players[i].PanicTollerance[cards[0].Type] {
+									fmt.Printf("\t\t\t*** PANIC! ***\n")
+									players[i].Panic[cards[0].Type] = 0
+									players[i].Treasure = 0
+								}
+							}
+						case "p":
+							inputOk = true
+							pass = true
+						default:
+							fmt.Printf("\t\t\tINVALID INPUT\n")
+							continue
 						}
 					}
 
-					if calmDown {
+					if pass {
 						break
 					}
 
-					cards, newO2 := draw(1, players[i].O2)
-					if len(cards) == 0 {
-						break
-					}
-
-					players[i].O2 = newO2
-					diceResult := throwDice(4, randomizer)
-					if players[i].Ability[cards[0].Type]+diceResult > cards[0].Value {
-						items, newItems := draw(cards[0].Treasure, gameItems)
-						if len(items) == 0 {
-							break
-						}
-						gameItems = newItems
-
-						for _, item := range items {
-							players[i].Treasure += item.Value
-							fmt.Printf("\t\t\tACTION '%s' RESOLVED %d + %d > %d: treasure = %d\n", cards[0].Type, players[i].Ability[cards[0].Type], diceResult, cards[0].Value, players[i].Treasure)
-						}
-						if players[i].Panic[cards[0].Type] > 0 {
-							players[i].Panic[cards[0].Type] -= 1
-						}
-					} else {
-						players[i].Panic[cards[0].Type] += 1
-						fmt.Printf("\t\t\tACTION '%s' NOT RESOLVED %d + %d <= %d : panic = %d\n", cards[0].Type, players[i].Ability[cards[0].Type], diceResult, cards[0].Value, players[i].Panic[cards[0].Type])
-						if players[i].Panic[cards[0].Type] == players[i].PanicTollerance[cards[0].Type] {
-							fmt.Printf("\t\t\t*** PANIC! ***\n")
-							players[i].Panic[cards[0].Type] = 0
-							players[i].Treasure = 0
-							break
-						}
-					}
 				}
 
 				fmt.Printf("\t\tEND TURN FOR %s\n", players[i].Id)
@@ -313,10 +346,6 @@ func main() {
 
 		fmt.Printf("END GAME %d\n", game+1)
 
-		winner := winner(players, objectives[objective])
-
-		fmt.Printf("WINNER: %s\n", winner)
-		gamesWon[winner] = gamesWon[winner] + 1
 	}
 
 	fmt.Println(gamesWon)
