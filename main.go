@@ -18,6 +18,7 @@ type player struct {
 	Ability         map[string]int
 	Panic           map[string]int
 	PanicTollerance map[string]int
+	RiskTollerance  int
 	Treasure        int
 }
 
@@ -26,8 +27,8 @@ type object struct {
 	Value int
 }
 
-var NumberOfGames = 1
-var NumberOfPlayers = 2
+var NumberOfGames = 1000
+var NumberOfPlayers = 4
 
 func main() {
 
@@ -72,11 +73,15 @@ func main() {
 
 	}
 
+	gamesWon := make(map[string]int)
+	winnersTreasures := make(map[int]int)
+
 	players := make([]player, NumberOfPlayers)
 	for i := range NumberOfPlayers {
 		player := player{
-			Id:       fmt.Sprintf("P%d", i+1),
-			Treasure: 0,
+			Id:             fmt.Sprintf("P%d", i+1),
+			Treasure:       0,
+			RiskTollerance: (i / 2) + 1,
 			Ability: map[string]int{
 				"ENCOUNTER":     3,
 				"ENVIRONMENT":   3,
@@ -98,6 +103,8 @@ func main() {
 			O2: make([]O2, len(o2Deck)),
 		}
 
+		gamesWon[player.Id] = 0
+
 		copy(player.O2, o2Deck)
 
 		randomizer.Shuffle(len(player.O2), func(i, j int) {
@@ -117,19 +124,45 @@ func main() {
 			gameItems[i], gameItems[j] = gameItems[j], gameItems[i]
 		})
 
+		for p := range players {
+			players[p].O2 = make([]O2, len(o2Deck))
+			players[p].Treasure = 0
+
+			players[p].Panic = map[string]int{
+				"ENCOUNTER":     0,
+				"ENVIRONMENT":   0,
+				"TECHNICAL":     0,
+				"SOPRANNATURAL": 0,
+			}
+
+			copy(players[p].O2, o2Deck)
+
+			randomizer.Shuffle(len(players[p].O2), func(i, j int) {
+				players[p].O2[i], players[p].O2[j] = players[p].O2[j], players[p].O2[i]
+			})
+		}
+
 		fmt.Printf("START GAME %d\n", game+1)
 
 		round := 1
-		for playersAlive(players) > 1 {
+		for playersAlive(players) > 1 && len(gameItems) > 0 {
 
 			fmt.Printf("\tSTART ROUND %d\n", round)
 
 			for i := range players {
 
+				if len(gameItems) == 0 {
+					break
+				}
+
 				fmt.Printf("\t\tSTART TURN FOR %s\n", players[i].Id)
 
 				//BREATH
 				cards, newO2 := draw(1, players[i].O2)
+				if len(cards) == 0 {
+					fmt.Printf("\t\t*** DEAD %s! ***\n", players[i].Id)
+					continue
+				}
 				players[i].O2 = newO2
 				diceResult := throwDice(4, randomizer)
 				if players[i].Ability[cards[0].Type]+diceResult > cards[0].Value {
@@ -156,9 +189,12 @@ func main() {
 
 				//TAKE ACTION
 				for a := 1; a <= 3; a++ {
+					if len(gameItems) == 0 {
+						break
+					}
 					calmDown := false
 					for panicType, value := range players[i].Panic {
-						if value == players[i].PanicTollerance[panicType]-1 {
+						if value == players[i].PanicTollerance[panicType]-players[i].RiskTollerance {
 							calmDown = true
 							if a == 1 {
 								diceResult := throwDice(4, randomizer)
@@ -195,6 +231,9 @@ func main() {
 					diceResult := throwDice(4, randomizer)
 					if players[i].Ability[cards[0].Type]+diceResult > cards[0].Value {
 						items, newItems := draw(cards[0].Treasure, gameItems)
+						if len(items) == 0 {
+							break
+						}
 						gameItems = newItems
 
 						for _, item := range items {
@@ -229,7 +268,12 @@ func main() {
 		winner, treasure := winner(players)
 
 		fmt.Printf("WINNER: %s has %d treasure points\n", winner, treasure)
+		gamesWon[winner] = gamesWon[winner] + 1
+		winnersTreasures[game+1] = treasure
 	}
+
+	fmt.Println(gamesWon)
+	//fmt.Println(winnersTreasures)
 }
 
 func playersAlive(players []player) int {
@@ -254,6 +298,10 @@ func winner(players []player) (string, int) {
 			bestTreasure = player.Treasure
 			playerId = player.Id
 		}
+	}
+
+	if playerId == "" {
+		fmt.Println("ITS A DRAW!")
 	}
 
 	return playerId, bestTreasure
