@@ -8,6 +8,48 @@ import (
 	"time"
 )
 
+// ANSI color codes
+const (
+	colorReset  = "\033[0m"
+	colorRed    = "\033[31m"
+	colorGreen  = "\033[32m"
+	colorYellow = "\033[33m"
+	colorBlue   = "\033[34m"
+	colorPurple = "\033[35m"
+	colorCyan   = "\033[36m"
+	colorWhite  = "\033[37m"
+	colorBold   = "\033[1m"
+)
+
+// Color helper functions
+func colorize(text string, color string) string {
+	return color + text + colorReset
+}
+
+func red(text string) string {
+	return colorize(text, colorRed)
+}
+
+func green(text string) string {
+	return colorize(text, colorGreen)
+}
+
+func yellow(text string) string {
+	return colorize(text, colorYellow)
+}
+
+func blue(text string) string {
+	return colorize(text, colorBlue)
+}
+
+func cyan(text string) string {
+	return colorize(text, colorCyan)
+}
+
+func bold(text string) string {
+	return colorize(text, colorBold)
+}
+
 var NumberOfGames = 1
 var NumberOfPlayers = 2
 
@@ -112,18 +154,18 @@ func reducePanicBy(p *player, panicType abilityType, value int) {
 
 // handlePanicTrigger handles all effects when panic is triggered
 func handlePanicTrigger(p *player, panicType abilityType) {
-	fmt.Printf("\t\t\t*** PANIC! ***\n")
+	fmt.Printf("\t\t\t%s\n", red(bold("*** PANIC! ***")))
 	p.Panic[panicType] = 0
 
 	// Lose all items
-	fmt.Printf("\t\t\tLost all items from inventory\n")
+	fmt.Printf("\t\t\t%s\n", yellow("Lost all items from inventory"))
 	p.Inventory = make([]item, 0)
 
 	// Discard 5 O2 cards
 	cardsToDiscard, newO2AfterPanic := draw(5, p.O2)
 	p.O2 = newO2AfterPanic
 	p.DiscardedO2 = append(p.DiscardedO2, cardsToDiscard...)
-	fmt.Printf("\t\t\tDiscarded %d O2 cards due to panic\n", len(cardsToDiscard))
+	fmt.Printf("\t\t\t%s\n", yellow(fmt.Sprintf("Discarded %d O2 cards due to panic", len(cardsToDiscard))))
 }
 
 // drawO2CardForBreath draws an O2 card for breathing, handling FreeBreath effect
@@ -179,14 +221,20 @@ func addItemsToInventory(p *player, items []item, actionType string, cardType ab
 		if isTreasure {
 			// Treasure items go directly to treasure, not inventory
 			p.Treasure += treasureValue
-			fmt.Printf("\t\t\t%s '%s' RESOLVED %d + %d + %d > %d: found treasure = %s (+%d treasure)\n", actionType, cardType, abilityValue, modifier, diceResult, cardValue, item.Type, treasureValue)
+			fmt.Printf("\t\t\t%s '%s' %s %d + %d + %d > %d: found treasure = %s %s\n",
+				actionType, cardType, green("RESOLVED"), abilityValue, modifier, diceResult, cardValue,
+				yellow(item.Type), green(fmt.Sprintf("(+%d treasure)", treasureValue)))
 		} else {
 			// Regular items go to inventory
 			if len(p.Inventory) < p.MaxInventorySize {
 				p.Inventory = append(p.Inventory, item)
-				fmt.Printf("\t\t\t%s '%s' RESOLVED %d + %d + %d > %d: item found = %s\n", actionType, cardType, abilityValue, modifier, diceResult, cardValue, item.Type)
+				fmt.Printf("\t\t\t%s '%s' %s %d + %d + %d > %d: item found = %s\n",
+					actionType, cardType, green("RESOLVED"), abilityValue, modifier, diceResult, cardValue,
+					cyan(item.Type))
 			} else {
-				fmt.Printf("\t\t\t%s '%s' RESOLVED %d + %d + %d > %d: item found = %s (INVENTORY FULL, ITEM LOST)\n", actionType, cardType, abilityValue, modifier, diceResult, cardValue, item.Type)
+				fmt.Printf("\t\t\t%s '%s' %s %d + %d + %d > %d: item found = %s %s\n",
+					actionType, cardType, green("RESOLVED"), abilityValue, modifier, diceResult, cardValue,
+					cyan(item.Type), yellow("(INVENTORY FULL, ITEM LOST)"))
 			}
 		}
 	}
@@ -215,18 +263,20 @@ func resetTemporaryEffects(p *player) {
 
 // printPlayerStatus prints the current status of the player
 func printPlayerStatus(p *player) {
-	fmt.Printf("\t\t\t--- %s STATUS ---\n", p.Id)
-	fmt.Printf("\t\t\tO2 Cards: %d | Discarded: %d\n", len(p.O2), len(p.DiscardedO2))
-	fmt.Printf("\t\t\tTreasure: %d\n", p.Treasure)
-	fmt.Printf("\t\t\tInventory (%d/%d): ", len(p.Inventory), p.MaxInventorySize)
+	fmt.Printf("\t\t\t%s\n", bold(cyan(fmt.Sprintf("--- %s STATUS ---", p.Id))))
+	fmt.Printf("\t\t\tO2 Cards: %s | Discarded: %s\n",
+		cyan(fmt.Sprintf("%d", len(p.O2))), yellow(fmt.Sprintf("%d", len(p.DiscardedO2))))
+	fmt.Printf("\t\t\tTreasure: %s\n", yellow(fmt.Sprintf("%d", p.Treasure)))
+	fmt.Printf("\t\t\tInventory (%s/%s): ",
+		cyan(fmt.Sprintf("%d", len(p.Inventory))), cyan(fmt.Sprintf("%d", p.MaxInventorySize)))
 	if len(p.Inventory) == 0 {
-		fmt.Print("Empty")
+		fmt.Print(yellow("Empty"))
 	} else {
 		for i, item := range p.Inventory {
 			if i > 0 {
 				fmt.Print(", ")
 			}
-			fmt.Print(item.Type)
+			fmt.Print(cyan(item.Type))
 		}
 	}
 	fmt.Println()
@@ -236,9 +286,13 @@ func printPlayerStatus(p *player) {
 		if !first {
 			fmt.Print(" | ")
 		}
-		fmt.Printf("%s: %d", abilityType, ability.Value)
+		fmt.Printf("%s: %s", abilityType, cyan(fmt.Sprintf("%d", ability.Value)))
 		if ability.Modifier != 0 {
-			fmt.Printf(" (+%d)", ability.Modifier)
+			if ability.Modifier > 0 {
+				fmt.Printf(" %s", green(fmt.Sprintf("(+%d)", ability.Modifier)))
+			} else {
+				fmt.Printf(" %s", red(fmt.Sprintf("(%d)", ability.Modifier)))
+			}
 		}
 		first = false
 	}
@@ -249,11 +303,19 @@ func printPlayerStatus(p *player) {
 		if !first {
 			fmt.Print(" | ")
 		}
-		fmt.Printf("%s: %d/%d", panicType, panicValue, p.PanicTollerance[panicType])
+		panicColor := green
+		if panicValue >= p.PanicTollerance[panicType] {
+			panicColor = red
+		} else if panicValue > 0 {
+			panicColor = yellow
+		}
+		fmt.Printf("%s: %s/%s", panicType,
+			panicColor(fmt.Sprintf("%d", panicValue)),
+			cyan(fmt.Sprintf("%d", p.PanicTollerance[panicType])))
 		first = false
 	}
 	fmt.Println()
-	fmt.Printf("\t\t\t-------------------\n")
+	fmt.Printf("\t\t\t%s\n", cyan("-------------------"))
 }
 
 func main() {
@@ -730,12 +792,12 @@ func main() {
 			})
 		}
 
-		fmt.Printf("START GAME %d\n", game+1)
+		fmt.Printf("%s\n", bold(cyan(fmt.Sprintf("START GAME %d", game+1))))
 
 		round := 1
 		for playersAlive(players) > 1 && len(gameItems) > 0 {
 
-			fmt.Printf("\tSTART ROUND %d\n", round)
+			fmt.Printf("\t%s\n", cyan(fmt.Sprintf("START ROUND %d", round)))
 
 			for i := range players {
 
@@ -743,12 +805,12 @@ func main() {
 					break
 				}
 
-				fmt.Printf("\t\tSTART TURN FOR %s\n", players[i].Id)
+				fmt.Printf("\t\t%s\n", bold(cyan(fmt.Sprintf("START TURN FOR %s", players[i].Id))))
 
 				//BREATH
 				cards, ok := drawO2CardForBreath(&players[i])
 				if !ok {
-					fmt.Printf("\t\t*** DEAD %s! ***\n", players[i].Id)
+					fmt.Printf("\t\t%s\n", red(bold(fmt.Sprintf("*** DEAD %s! ***", players[i].Id))))
 					continue
 				}
 
@@ -774,14 +836,20 @@ func main() {
 						if isTreasure {
 							// Treasure items go directly to treasure, not inventory
 							players[i].Treasure += treasureValue
-							fmt.Printf("\t\t\tBREATH '%s' RESOLVED %d + %d + %d > %d: found treasure = %s (+%d treasure)\n", cards[0].Type, ability.Value, ability.Modifier, diceResult, cards[0].Value, item.Type, treasureValue)
+							fmt.Printf("\t\t\tBREATH '%s' %s %d + %d + %d > %d: found treasure = %s %s\n",
+								cards[0].Type, green("RESOLVED"), ability.Value, ability.Modifier, diceResult, cards[0].Value,
+								yellow(item.Type), green(fmt.Sprintf("(+%d treasure)", treasureValue)))
 						} else {
 							// Regular items go to inventory
 							if len(players[i].Inventory) < players[i].MaxInventorySize {
 								players[i].Inventory = append(players[i].Inventory, item)
-								fmt.Printf("\t\t\tBREATH '%s' RESOLVED %d + %d + %d > %d: found item = %s\n", cards[0].Type, ability.Value, ability.Modifier, diceResult, cards[0].Value, item.Type)
+								fmt.Printf("\t\t\tBREATH '%s' %s %d + %d + %d > %d: found item = %s\n",
+									cards[0].Type, green("RESOLVED"), ability.Value, ability.Modifier, diceResult, cards[0].Value,
+									cyan(item.Type))
 							} else {
-								fmt.Printf("\t\t\tBREATH '%s' RESOLVED %d + %d + %d > %d: found item = %s (INVENTORY FULL, ITEM LOST)\n", cards[0].Type, ability.Value, ability.Modifier, diceResult, cards[0].Value, item.Type)
+								fmt.Printf("\t\t\tBREATH '%s' %s %d + %d + %d > %d: found item = %s %s\n",
+									cards[0].Type, green("RESOLVED"), ability.Value, ability.Modifier, diceResult, cards[0].Value,
+									cyan(item.Type), yellow("(INVENTORY FULL, ITEM LOST)"))
 							}
 						}
 						reducePanic(&players[i], cards[0].Type)
@@ -791,7 +859,9 @@ func main() {
 						handlePanicTrigger(&players[i], cards[0].Type)
 						continue
 					} else {
-						fmt.Printf("\t\t\tBREATH '%s' NOT RESOLVED %d + %d + %d < %d: panic = %d\n", cards[0].Type, ability.Value, ability.Modifier, diceResult, cards[0].Value, players[i].Panic[cards[0].Type])
+						fmt.Printf("\t\t\tBREATH '%s' %s %d + %d + %d < %d: panic = %s\n",
+							cards[0].Type, red("NOT RESOLVED"), ability.Value, ability.Modifier, diceResult, cards[0].Value,
+							red(fmt.Sprintf("%d", players[i].Panic[cards[0].Type])))
 					}
 				}
 
@@ -819,7 +889,7 @@ func main() {
 						switch strings.ToLower(input) {
 						case "c":
 							if a != 1 {
-								fmt.Printf("\t\t\tCALM DOWN can only be used as the first action of the round\n")
+								fmt.Printf("\t\t\t%s\n", yellow("CALM DOWN can only be used as the first action of the round"))
 								continue
 							}
 							inputOk = true
@@ -855,20 +925,24 @@ func main() {
 							diceResult := throwDice(4, randomizer)
 							currentPanic := players[i].Panic[chosenPanicType]
 
-							fmt.Printf("\t\t\tCALM DOWN: Rolled %d, Panic level: %d\n", diceResult, currentPanic)
+							fmt.Printf("\t\t\t%s: Rolled %s, Panic level: %s\n",
+								cyan("CALM DOWN"), yellow(fmt.Sprintf("%d", diceResult)), cyan(fmt.Sprintf("%d", currentPanic)))
 
 							if diceResult > currentPanic {
 								// Success: reduce panic by 1
 								reducePanicBy(&players[i], chosenPanicType, 1)
-								fmt.Printf("\t\t\tCALM DOWN SUCCESS: %s panic reduced by 1 (now: %d)\n", chosenPanicType, players[i].Panic[chosenPanicType])
+								fmt.Printf("\t\t\t%s: %s %s panic reduced by 1 (now: %s)\n",
+									cyan("CALM DOWN"), green("SUCCESS"), chosenPanicType, green(fmt.Sprintf("%d", players[i].Panic[chosenPanicType])))
 							} else {
 								// Failure: increase panic by 1 and check if panic triggers
-								fmt.Printf("\t\t\tCALM DOWN FAILED: %s panic will increase by 1\n", chosenPanicType)
+								fmt.Printf("\t\t\t%s: %s %s panic will increase by 1\n",
+									cyan("CALM DOWN"), red("FAILED"), chosenPanicType)
 								if increasePanic(&players[i], chosenPanicType) {
 									handlePanicTrigger(&players[i], chosenPanicType)
 									stopActions = true
 								} else {
-									fmt.Printf("\t\t\tCALM DOWN FAILED: %s panic increased by 1 (now: %d)\n", chosenPanicType, players[i].Panic[chosenPanicType])
+									fmt.Printf("\t\t\t%s: %s %s panic increased by 1 (now: %s)\n",
+										cyan("CALM DOWN"), red("FAILED"), chosenPanicType, red(fmt.Sprintf("%d", players[i].Panic[chosenPanicType])))
 								}
 							}
 
@@ -1006,7 +1080,9 @@ func main() {
 									actionCompleted = true
 									stopActions = true
 								} else {
-									fmt.Printf("\t\t\tACTION '%s' NOT RESOLVED %d + %d + %d <= %d : panic = %d\n", cards[0].Type, ability.Value, ability.Modifier, diceResult, cards[0].Value, players[i].Panic[cards[0].Type])
+									fmt.Printf("\t\t\tACTION '%s' %s %d + %d + %d <= %d : panic = %s\n",
+										cards[0].Type, red("NOT RESOLVED"), ability.Value, ability.Modifier, diceResult, cards[0].Value,
+										red(fmt.Sprintf("%d", players[i].Panic[cards[0].Type])))
 									// Action failed but was attempted, mark as done
 									actionCompleted = true
 								}
@@ -1030,17 +1106,17 @@ func main() {
 				// Reset temporary effects at the end of the turn
 				resetTemporaryEffects(&players[i])
 
-				fmt.Printf("\t\tEND TURN FOR %s\n", players[i].Id)
+				fmt.Printf("\t\t%s\n", cyan(fmt.Sprintf("END TURN FOR %s", players[i].Id)))
 
 			}
 
-			fmt.Printf("\tEND ROUND %d\n", round)
+			fmt.Printf("\t%s\n", cyan(fmt.Sprintf("END ROUND %d", round)))
 			round++
 		}
 
-		fmt.Printf("ITEMS LEFT: %d\n", len(gameItems))
+		fmt.Printf("%s\n", cyan(fmt.Sprintf("ITEMS LEFT: %d", len(gameItems))))
 
-		fmt.Printf("END GAME %d\n", game+1)
+		fmt.Printf("%s\n", bold(cyan(fmt.Sprintf("END GAME %d", game+1))))
 
 	}
 
