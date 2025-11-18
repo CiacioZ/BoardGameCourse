@@ -525,6 +525,19 @@ func main() {
 				Soprannatural: 0,
 			}
 
+			// Reset ability modifiers and effects for new game
+			players[p].Ability = map[abilityType]abilityValue{
+				Encounter:     {Value: 3, Modifier: 0},
+				Environment:   {Value: 3, Modifier: 0},
+				Technical:     {Value: 3, Modifier: 0},
+				Soprannatural: {Value: 3, Modifier: 0},
+			}
+			players[p].Effects = make([]itemEffect, 0)
+			players[p].Inventory = make([]item, 0)
+			players[p].Treasure = 0
+			players[p].MaxInventorySize = 3
+			players[p].DiscardedO2 = make([]O2, 0)
+
 			copy(players[p].O2, o2Deck)
 
 			randomizer.Shuffle(len(players[p].O2), func(i, j int) {
@@ -548,28 +561,63 @@ func main() {
 				fmt.Printf("\t\tSTART TURN FOR %s\n", players[i].Id)
 
 				//BREATH
-				cards, newO2 := draw(1, players[i].O2)
-				if len(cards) == 0 {
-					fmt.Printf("\t\t*** DEAD %s! ***\n", players[i].Id)
-					continue
+				// Check for FreeBreath effect
+				hasFreeBreath := false
+				for _, effect := range players[i].Effects {
+					if effect.effectType == FreeBreath {
+						hasFreeBreath = true
+						break
+					}
 				}
-				players[i].O2 = newO2
-				players[i].DiscardedO2 = append(players[i].DiscardedO2, cards...)
+
+				var cards []O2
+				var newO2 []O2
+				if !hasFreeBreath {
+					cards, newO2 = draw(1, players[i].O2)
+					if len(cards) == 0 {
+						fmt.Printf("\t\t*** DEAD %s! ***\n", players[i].Id)
+						continue
+					}
+					players[i].O2 = newO2
+					players[i].DiscardedO2 = append(players[i].DiscardedO2, cards...)
+				} else {
+					// FreeBreath: draw card but put it back in the deck instead of discarding
+					cards, newO2 = draw(1, players[i].O2)
+					if len(cards) == 0 {
+						fmt.Printf("\t\t*** DEAD %s! ***\n", players[i].Id)
+						continue
+					}
+					players[i].O2 = newO2
+					// Card is put back at the bottom of the deck with FreeBreath
+					players[i].O2 = append(players[i].O2, cards[0])
+				}
+
 				diceResult := throwDice(4, randomizer)
 				if players[i].Ability[cards[0].Type].Value+players[i].Ability[cards[0].Type].Modifier+diceResult > cards[0].Value {
-					items, newItems := draw(cards[0].ItemReward, gameItems)
+					// Calculate number of items to draw (including DrawMoreItems effects)
+					itemsToDraw := cards[0].ItemReward
+					for _, effect := range players[i].Effects {
+						if effect.effectType == DrawMoreItems {
+							itemsToDraw += effect.value
+						}
+					}
+
+					items, newItems := draw(itemsToDraw, gameItems)
 					gameItems = newItems
 
 					for _, item := range items {
 						fmt.Printf("\t\t\tBREATH '%s' RESOLVED %d + %d + %d > %d: found item = %s\n", cards[0].Type, players[i].Ability[cards[0].Type].Value, players[i].Ability[cards[0].Type].Modifier, diceResult, cards[0].Value, item.Type)
 						if players[i].Panic[cards[0].Type] > 0 {
 							players[i].Panic[cards[0].Type] -= 1
+							if players[i].Panic[cards[0].Type] < 0 {
+								players[i].Panic[cards[0].Type] = 0
+							}
 						}
 					}
 				} else {
 					players[i].Panic[cards[0].Type] += 1
 					fmt.Printf("\t\t\tBREATH '%s' NOT RESOLVED %d + %d + %d < %d: panic = %d\n", cards[0].Type, players[i].Ability[cards[0].Type].Value, players[i].Ability[cards[0].Type].Modifier, diceResult, cards[0].Value, players[i].Panic[cards[0].Type])
-					if players[i].Panic[cards[0].Type] == players[i].PanicTollerance[cards[0].Type] {
+					if players[i].Panic[cards[0].Type] >= players[i].PanicTollerance[cards[0].Type] {
 						fmt.Printf("\t\t\t*** PANIC! ***\n")
 						players[i].Panic[cards[0].Type] = 0
 						continue
@@ -591,9 +639,14 @@ func main() {
 
 						switch strings.ToLower(input) {
 						case "u":
+							if len(players[i].Inventory) == 0 {
+								fmt.Printf("\t\t\tNO ITEMS IN INVENTORY\n")
+								continue
+							}
 							choosen := false
+							itemIndex := -1
 							for !choosen {
-								for _, item := range players[i].Inventory {
+								for idx, item := range players[i].Inventory {
 
 									if choosen {
 										break
@@ -605,24 +658,25 @@ func main() {
 									switch strings.ToLower(input) {
 									case "y":
 										choosen = true
+										itemIndex = idx
 										for _, effect := range item.Effects {
 											fmt.Printf("\t\t\tEFFECT: %s - Value: %d\n", effect.effectType, effect.value)
 											switch effect.effectType {
 											case IncreaseEncounter:
 												ability := players[i].Ability[Encounter]
-												ability.Modifier = effect.value
+												ability.Modifier += effect.value
 												players[i].Ability[Encounter] = ability
 											case IncreaseEnvironment:
 												ability := players[i].Ability[Environment]
-												ability.Modifier = effect.value
+												ability.Modifier += effect.value
 												players[i].Ability[Environment] = ability
 											case IncreaseTechnical:
 												ability := players[i].Ability[Technical]
-												ability.Modifier = effect.value
+												ability.Modifier += effect.value
 												players[i].Ability[Technical] = ability
 											case IncreaseSoprannatural:
 												ability := players[i].Ability[Soprannatural]
-												ability.Modifier = effect.value
+												ability.Modifier += effect.value
 												players[i].Ability[Soprannatural] = ability
 											case DrawMoreItems:
 												players[i].Effects = append(players[i].Effects, effect)
@@ -652,6 +706,9 @@ func main() {
 														switch strings.ToLower(input) {
 														case "y":
 															players[i].Panic[ability] = players[i].Panic[ability] - effect.value
+															if players[i].Panic[ability] < 0 {
+																players[i].Panic[ability] = 0
+															}
 															choosen = true
 														case "n":
 															choosen = false
@@ -672,12 +729,18 @@ func main() {
 
 											case ReduceAllPanicTypes:
 												for ability := range players[i].Panic {
-
 													players[i].Panic[ability] = players[i].Panic[ability] - effect.value
-
+													if players[i].Panic[ability] < 0 {
+														players[i].Panic[ability] = 0
+													}
 												}
 											}
 										}
+										// Remove item from inventory after use
+										if itemIndex >= 0 && itemIndex < len(players[i].Inventory) {
+											players[i].Inventory = append(players[i].Inventory[:itemIndex], players[i].Inventory[itemIndex+1:]...)
+										}
+										inputOk = true
 									case "n":
 										continue
 									default:
@@ -691,33 +754,52 @@ func main() {
 							cards, newO2 := draw(1, players[i].O2)
 							if len(cards) == 0 {
 								pass = true
+								break
 							}
 
 							players[i].O2 = newO2
 							players[i].DiscardedO2 = append(players[i].DiscardedO2, cards...)
 							diceResult := throwDice(4, randomizer)
 							if players[i].Ability[cards[0].Type].Value+players[i].Ability[cards[0].Type].Modifier+diceResult > cards[0].Value {
-								items, newItems := draw(cards[0].ItemReward, gameItems)
+								// Calculate number of items to draw (including DrawMoreItems effects)
+								itemsToDraw := cards[0].ItemReward
+								for _, effect := range players[i].Effects {
+									if effect.effectType == DrawMoreItems {
+										itemsToDraw += effect.value
+									}
+								}
+
+								items, newItems := draw(itemsToDraw, gameItems)
 								if len(items) == 0 {
 									pass = true
 								}
-								if len(players[i].Inventory)+len(items) <= players[i].MaxInventorySize {
-									players[i].Inventory = append(players[i].Inventory, items...)
+
+								// Add items to inventory if there's space
+								itemsAdded := 0
+								for _, item := range items {
+									if len(players[i].Inventory) < players[i].MaxInventorySize {
+										players[i].Inventory = append(players[i].Inventory, item)
+										itemsAdded++
+										fmt.Printf("\t\t\tACTION '%s' RESOLVED %d + %d + %d > %d: item found = %s\n", cards[0].Type, players[i].Ability[cards[0].Type].Value, players[i].Ability[cards[0].Type].Modifier, diceResult, cards[0].Value, item.Type)
+									} else {
+										fmt.Printf("\t\t\tACTION '%s' RESOLVED %d + %d + %d > %d: item found = %s (INVENTORY FULL, ITEM LOST)\n", cards[0].Type, players[i].Ability[cards[0].Type].Value, players[i].Ability[cards[0].Type].Modifier, diceResult, cards[0].Value, item.Type)
+									}
 								}
 								gameItems = newItems
 
-								for _, item := range items {
-									fmt.Printf("\t\t\tACTION '%s' RESOLVED %d + %d + %d > %d: item found = %s\n", cards[0].Type, players[i].Ability[cards[0].Type].Value, players[i].Ability[cards[0].Type].Modifier, diceResult, cards[0].Value, item.Type)
-								}
 								if players[i].Panic[cards[0].Type] > 0 {
 									players[i].Panic[cards[0].Type] -= 1
+									if players[i].Panic[cards[0].Type] < 0 {
+										players[i].Panic[cards[0].Type] = 0
+									}
 								}
 							} else {
 								players[i].Panic[cards[0].Type] += 1
 								fmt.Printf("\t\t\tACTION '%s' NOT RESOLVED %d + %d + %d <= %d : panic = %d\n", cards[0].Type, players[i].Ability[cards[0].Type].Value, players[i].Ability[cards[0].Type].Modifier, diceResult, cards[0].Value, players[i].Panic[cards[0].Type])
-								if players[i].Panic[cards[0].Type] == players[i].PanicTollerance[cards[0].Type] {
+								if players[i].Panic[cards[0].Type] >= players[i].PanicTollerance[cards[0].Type] {
 									fmt.Printf("\t\t\t*** PANIC! ***\n")
 									players[i].Panic[cards[0].Type] = 0
+									pass = true
 								}
 							}
 						case "p":
