@@ -71,6 +71,117 @@ type itemEffect struct {
 	value      int
 }
 
+// hasFreeBreath checks if the player has the FreeBreath effect active
+func hasFreeBreath(p *player) bool {
+	for _, effect := range p.Effects {
+		if effect.effectType == FreeBreath {
+			return true
+		}
+	}
+	return false
+}
+
+// calculateItemsToDraw calculates how many items to draw including DrawMoreItems effects
+func calculateItemsToDraw(baseReward int, p *player) int {
+	itemsToDraw := baseReward
+	for _, effect := range p.Effects {
+		if effect.effectType == DrawMoreItems {
+			itemsToDraw += effect.value
+		}
+	}
+	return itemsToDraw
+}
+
+// reducePanic reduces panic by 1 and ensures it doesn't go below 0
+func reducePanic(p *player, panicType abilityType) {
+	if p.Panic[panicType] > 0 {
+		p.Panic[panicType] -= 1
+		if p.Panic[panicType] < 0 {
+			p.Panic[panicType] = 0
+		}
+	}
+}
+
+// reducePanicBy reduces panic by a specific value and ensures it doesn't go below 0
+func reducePanicBy(p *player, panicType abilityType, value int) {
+	p.Panic[panicType] = p.Panic[panicType] - value
+	if p.Panic[panicType] < 0 {
+		p.Panic[panicType] = 0
+	}
+}
+
+// handlePanicTrigger handles all effects when panic is triggered
+func handlePanicTrigger(p *player, panicType abilityType) {
+	fmt.Printf("\t\t\t*** PANIC! ***\n")
+	p.Panic[panicType] = 0
+
+	// Lose all items
+	fmt.Printf("\t\t\tLost all items from inventory\n")
+	p.Inventory = make([]item, 0)
+
+	// Discard 5 O2 cards
+	cardsToDiscard, newO2AfterPanic := draw(5, p.O2)
+	p.O2 = newO2AfterPanic
+	p.DiscardedO2 = append(p.DiscardedO2, cardsToDiscard...)
+	fmt.Printf("\t\t\tDiscarded %d O2 cards due to panic\n", len(cardsToDiscard))
+}
+
+// drawO2CardForBreath draws an O2 card for breathing, handling FreeBreath effect
+func drawO2CardForBreath(p *player) ([]O2, bool) {
+	var cards []O2
+	var newO2 []O2
+
+	if !hasFreeBreath(p) {
+		cards, newO2 = draw(1, p.O2)
+		if len(cards) == 0 {
+			return nil, false
+		}
+		p.O2 = newO2
+		p.DiscardedO2 = append(p.DiscardedO2, cards...)
+	} else {
+		// FreeBreath: draw card but put it back in the deck instead of discarding
+		cards, newO2 = draw(1, p.O2)
+		if len(cards) == 0 {
+			return nil, false
+		}
+		p.O2 = newO2
+		// Card is put back at the bottom of the deck with FreeBreath
+		p.O2 = append(p.O2, cards[0])
+	}
+	return cards, true
+}
+
+// checkCardResolved checks if a card is resolved successfully
+func checkCardResolved(p *player, card O2, diceResult int) bool {
+	ability := p.Ability[card.Type]
+	return ability.Value+ability.Modifier+diceResult > card.Value
+}
+
+// increasePanic increases panic by 1 and checks if panic is triggered
+func increasePanic(p *player, panicType abilityType) bool {
+	p.Panic[panicType] += 1
+	return p.Panic[panicType] >= p.PanicTollerance[panicType]
+}
+
+// addItemsToInventory adds items to inventory, handling full inventory
+func addItemsToInventory(p *player, items []item, actionType string, cardType abilityType, abilityValue, modifier, diceResult, cardValue int) {
+	for _, item := range items {
+		if len(p.Inventory) < p.MaxInventorySize {
+			p.Inventory = append(p.Inventory, item)
+			fmt.Printf("\t\t\t%s '%s' RESOLVED %d + %d + %d > %d: item found = %s\n", actionType, cardType, abilityValue, modifier, diceResult, cardValue, item.Type)
+		} else {
+			fmt.Printf("\t\t\t%s '%s' RESOLVED %d + %d + %d > %d: item found = %s (INVENTORY FULL, ITEM LOST)\n", actionType, cardType, abilityValue, modifier, diceResult, cardValue, item.Type)
+		}
+	}
+}
+
+// increaseAbilityModifier increases the modifier for a specific ability type
+func increaseAbilityModifier(p *player, abilityType abilityType, value int) {
+	ability := p.Ability[abilityType]
+	ability.Modifier += value
+	p.Ability[abilityType] = ability
+}
+
 func main() {
 
 	randomizer := rand.New(rand.NewSource(time.Now().UnixNano()))
@@ -561,65 +672,27 @@ func main() {
 				fmt.Printf("\t\tSTART TURN FOR %s\n", players[i].Id)
 
 				//BREATH
-				// Check for FreeBreath effect
-				hasFreeBreath := false
-				for _, effect := range players[i].Effects {
-					if effect.effectType == FreeBreath {
-						hasFreeBreath = true
-						break
-					}
-				}
-
-				var cards []O2
-				var newO2 []O2
-				if !hasFreeBreath {
-					cards, newO2 = draw(1, players[i].O2)
-					if len(cards) == 0 {
-						fmt.Printf("\t\t*** DEAD %s! ***\n", players[i].Id)
-						continue
-					}
-					players[i].O2 = newO2
-					players[i].DiscardedO2 = append(players[i].DiscardedO2, cards...)
-				} else {
-					// FreeBreath: draw card but put it back in the deck instead of discarding
-					cards, newO2 = draw(1, players[i].O2)
-					if len(cards) == 0 {
-						fmt.Printf("\t\t*** DEAD %s! ***\n", players[i].Id)
-						continue
-					}
-					players[i].O2 = newO2
-					// Card is put back at the bottom of the deck with FreeBreath
-					players[i].O2 = append(players[i].O2, cards[0])
+				cards, ok := drawO2CardForBreath(&players[i])
+				if !ok {
+					fmt.Printf("\t\t*** DEAD %s! ***\n", players[i].Id)
+					continue
 				}
 
 				diceResult := throwDice(4, randomizer)
-				if players[i].Ability[cards[0].Type].Value+players[i].Ability[cards[0].Type].Modifier+diceResult > cards[0].Value {
-					// Calculate number of items to draw (including DrawMoreItems effects)
-					itemsToDraw := cards[0].ItemReward
-					for _, effect := range players[i].Effects {
-						if effect.effectType == DrawMoreItems {
-							itemsToDraw += effect.value
-						}
-					}
-
+				ability := players[i].Ability[cards[0].Type]
+				if checkCardResolved(&players[i], cards[0], diceResult) {
+					itemsToDraw := calculateItemsToDraw(cards[0].ItemReward, &players[i])
 					items, newItems := draw(itemsToDraw, gameItems)
 					gameItems = newItems
 
 					for _, item := range items {
-						fmt.Printf("\t\t\tBREATH '%s' RESOLVED %d + %d + %d > %d: found item = %s\n", cards[0].Type, players[i].Ability[cards[0].Type].Value, players[i].Ability[cards[0].Type].Modifier, diceResult, cards[0].Value, item.Type)
-						if players[i].Panic[cards[0].Type] > 0 {
-							players[i].Panic[cards[0].Type] -= 1
-							if players[i].Panic[cards[0].Type] < 0 {
-								players[i].Panic[cards[0].Type] = 0
-							}
-						}
+						fmt.Printf("\t\t\tBREATH '%s' RESOLVED %d + %d + %d > %d: found item = %s\n", cards[0].Type, ability.Value, ability.Modifier, diceResult, cards[0].Value, item.Type)
+						reducePanic(&players[i], cards[0].Type)
 					}
 				} else {
-					players[i].Panic[cards[0].Type] += 1
-					fmt.Printf("\t\t\tBREATH '%s' NOT RESOLVED %d + %d + %d < %d: panic = %d\n", cards[0].Type, players[i].Ability[cards[0].Type].Value, players[i].Ability[cards[0].Type].Modifier, diceResult, cards[0].Value, players[i].Panic[cards[0].Type])
-					if players[i].Panic[cards[0].Type] >= players[i].PanicTollerance[cards[0].Type] {
-						fmt.Printf("\t\t\t*** PANIC! ***\n")
-						players[i].Panic[cards[0].Type] = 0
+					fmt.Printf("\t\t\tBREATH '%s' NOT RESOLVED %d + %d + %d < %d: panic = %d\n", cards[0].Type, ability.Value, ability.Modifier, diceResult, cards[0].Value, players[i].Panic[cards[0].Type])
+					if increasePanic(&players[i], cards[0].Type) {
+						handlePanicTrigger(&players[i], cards[0].Type)
 						continue
 					}
 				}
@@ -663,21 +736,13 @@ func main() {
 											fmt.Printf("\t\t\tEFFECT: %s - Value: %d\n", effect.effectType, effect.value)
 											switch effect.effectType {
 											case IncreaseEncounter:
-												ability := players[i].Ability[Encounter]
-												ability.Modifier += effect.value
-												players[i].Ability[Encounter] = ability
+												increaseAbilityModifier(&players[i], Encounter, effect.value)
 											case IncreaseEnvironment:
-												ability := players[i].Ability[Environment]
-												ability.Modifier += effect.value
-												players[i].Ability[Environment] = ability
+												increaseAbilityModifier(&players[i], Environment, effect.value)
 											case IncreaseTechnical:
-												ability := players[i].Ability[Technical]
-												ability.Modifier += effect.value
-												players[i].Ability[Technical] = ability
+												increaseAbilityModifier(&players[i], Technical, effect.value)
 											case IncreaseSoprannatural:
-												ability := players[i].Ability[Soprannatural]
-												ability.Modifier += effect.value
-												players[i].Ability[Soprannatural] = ability
+												increaseAbilityModifier(&players[i], Soprannatural, effect.value)
 											case DrawMoreItems:
 												players[i].Effects = append(players[i].Effects, effect)
 											case Treasure:
@@ -705,10 +770,7 @@ func main() {
 
 														switch strings.ToLower(input) {
 														case "y":
-															players[i].Panic[ability] = players[i].Panic[ability] - effect.value
-															if players[i].Panic[ability] < 0 {
-																players[i].Panic[ability] = 0
-															}
+															reducePanicBy(&players[i], ability, effect.value)
 															choosen = true
 														case "n":
 															choosen = false
@@ -729,10 +791,7 @@ func main() {
 
 											case ReduceAllPanicTypes:
 												for ability := range players[i].Panic {
-													players[i].Panic[ability] = players[i].Panic[ability] - effect.value
-													if players[i].Panic[ability] < 0 {
-														players[i].Panic[ability] = 0
-													}
+													reducePanicBy(&players[i], ability, effect.value)
 												}
 											}
 										}
@@ -760,45 +819,22 @@ func main() {
 							players[i].O2 = newO2
 							players[i].DiscardedO2 = append(players[i].DiscardedO2, cards...)
 							diceResult := throwDice(4, randomizer)
-							if players[i].Ability[cards[0].Type].Value+players[i].Ability[cards[0].Type].Modifier+diceResult > cards[0].Value {
-								// Calculate number of items to draw (including DrawMoreItems effects)
-								itemsToDraw := cards[0].ItemReward
-								for _, effect := range players[i].Effects {
-									if effect.effectType == DrawMoreItems {
-										itemsToDraw += effect.value
-									}
-								}
-
+							ability := players[i].Ability[cards[0].Type]
+							if checkCardResolved(&players[i], cards[0], diceResult) {
+								itemsToDraw := calculateItemsToDraw(cards[0].ItemReward, &players[i])
 								items, newItems := draw(itemsToDraw, gameItems)
 								if len(items) == 0 {
 									pass = true
 								}
 
-								// Add items to inventory if there's space
-								itemsAdded := 0
-								for _, item := range items {
-									if len(players[i].Inventory) < players[i].MaxInventorySize {
-										players[i].Inventory = append(players[i].Inventory, item)
-										itemsAdded++
-										fmt.Printf("\t\t\tACTION '%s' RESOLVED %d + %d + %d > %d: item found = %s\n", cards[0].Type, players[i].Ability[cards[0].Type].Value, players[i].Ability[cards[0].Type].Modifier, diceResult, cards[0].Value, item.Type)
-									} else {
-										fmt.Printf("\t\t\tACTION '%s' RESOLVED %d + %d + %d > %d: item found = %s (INVENTORY FULL, ITEM LOST)\n", cards[0].Type, players[i].Ability[cards[0].Type].Value, players[i].Ability[cards[0].Type].Modifier, diceResult, cards[0].Value, item.Type)
-									}
-								}
+								addItemsToInventory(&players[i], items, "ACTION", cards[0].Type, ability.Value, ability.Modifier, diceResult, cards[0].Value)
 								gameItems = newItems
 
-								if players[i].Panic[cards[0].Type] > 0 {
-									players[i].Panic[cards[0].Type] -= 1
-									if players[i].Panic[cards[0].Type] < 0 {
-										players[i].Panic[cards[0].Type] = 0
-									}
-								}
+								reducePanic(&players[i], cards[0].Type)
 							} else {
-								players[i].Panic[cards[0].Type] += 1
-								fmt.Printf("\t\t\tACTION '%s' NOT RESOLVED %d + %d + %d <= %d : panic = %d\n", cards[0].Type, players[i].Ability[cards[0].Type].Value, players[i].Ability[cards[0].Type].Modifier, diceResult, cards[0].Value, players[i].Panic[cards[0].Type])
-								if players[i].Panic[cards[0].Type] >= players[i].PanicTollerance[cards[0].Type] {
-									fmt.Printf("\t\t\t*** PANIC! ***\n")
-									players[i].Panic[cards[0].Type] = 0
+								fmt.Printf("\t\t\tACTION '%s' NOT RESOLVED %d + %d + %d <= %d : panic = %d\n", cards[0].Type, ability.Value, ability.Modifier, diceResult, cards[0].Value, players[i].Panic[cards[0].Type])
+								if increasePanic(&players[i], cards[0].Type) {
+									handlePanicTrigger(&players[i], cards[0].Type)
 									pass = true
 								}
 							}
