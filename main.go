@@ -425,19 +425,21 @@ func main() {
 		for playersAlive(players) > 0 && len(gameItems) > 0 {
 			fmt.Printf("\t%s\n", cyan(fmt.Sprintf("--- START ROUND %d ---", round)))
 
-			fmt.Printf("\t%s\n", purple(">>> Resting phase..."))
-			for i := range players {
-				if len(players[i].O2) > 0 {
-					if players[i].Panic == 0 {
-						rndAbility := allAbilities[randomizer.Intn(len(allAbilities))]
-						players[i].AbilityPool[rndAbility]++
-						fmt.Printf("\t\t%s is calm. Recovered 1 point in %s (Total: %d)\n",
-							players[i].Id, rndAbility, players[i].AbilityPool[rndAbility])
-					} else {
-						fmt.Printf("\t\t%s is too stressed to rest! (Panic: %d) - No points recovered.\n",
-							red(players[i].Id), players[i].Panic)
+			if round > 1 {
+				fmt.Printf("\t%s\n", purple(">>> Resting phase..."))
+				for i := range players {
+					if len(players[i].O2) > 0 {
+						if players[i].Panic == 0 {
+							rndAbility := allAbilities[randomizer.Intn(len(allAbilities))]
+							players[i].AbilityPool[rndAbility]++
+							fmt.Printf("\t\t%s is calm. Recovered 1 point in %s (Total: %d)\n",
+								players[i].Id, rndAbility, players[i].AbilityPool[rndAbility])
+						} else {
+							fmt.Printf("\t\t%s is too stressed to rest! (Panic: %d) - No points recovered.\n",
+								red(players[i].Id), players[i].Panic)
+						}
+						players[i].RoundScore = 0
 					}
-					players[i].RoundScore = 0
 				}
 			}
 
