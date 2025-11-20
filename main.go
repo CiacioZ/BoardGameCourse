@@ -1,14 +1,17 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"math/rand"
+	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
 
-// ANSI color codes
+// --- ANSI COLOR CODES ---
 const (
 	colorReset  = "\033[0m"
 	colorRed    = "\033[31m"
@@ -21,38 +24,19 @@ const (
 	colorBold   = "\033[1m"
 )
 
-// Color helper functions
-func colorize(text string, color string) string {
-	return color + text + colorReset
-}
-
-func red(text string) string {
-	return colorize(text, colorRed)
-}
-
-func green(text string) string {
-	return colorize(text, colorGreen)
-}
-
-func yellow(text string) string {
-	return colorize(text, colorYellow)
-}
-
-func blue(text string) string {
-	return colorize(text, colorBlue)
-}
-
-func cyan(text string) string {
-	return colorize(text, colorCyan)
-}
-
-func bold(text string) string {
-	return colorize(text, colorBold)
-}
+// --- COLOR HELPER FUNCTIONS ---
+func colorize(text string, color string) string { return color + text + colorReset }
+func red(text string) string                    { return colorize(text, colorRed) }
+func green(text string) string                  { return colorize(text, colorGreen) }
+func yellow(text string) string                 { return colorize(text, colorYellow) }
+func cyan(text string) string                   { return colorize(text, colorCyan) }
+func bold(text string) string                   { return colorize(text, colorBold) }
+func purple(text string) string                 { return colorize(text, colorPurple) }
 
 var NumberOfGames = 1
 var NumberOfPlayers = 2
 
+// --- TYPES & CONSTANTS ---
 type abilityType string
 
 const (
@@ -62,28 +46,27 @@ const (
 	Soprannatural abilityType = "SOPRANNATURAL"
 )
 
+var allAbilities = []abilityType{Encounter, Environment, Technical, Soprannatural}
+
+// MODIFICA: Aggiunto SecondaryType per i Boss Ibridi
 type O2 struct {
-	Type       abilityType
-	Value      int
-	ItemReward int
+	Name          string
+	Type          abilityType
+	SecondaryType abilityType // Se presente, è una carta ibrida
+	Value         int
 }
 
 type player struct {
 	Id               string
 	O2               []O2
 	DiscardedO2      []O2
-	Ability          map[abilityType]abilityValue
-	Panic            map[abilityType]int
-	PanicTollerance  map[abilityType]int
+	AbilityPool      map[abilityType]int
+	Panic            int
 	Treasure         int
 	Inventory        []item
 	Effects          []itemEffect
 	MaxInventorySize int
-}
-
-type abilityValue struct {
-	Value    int
-	Modifier int
+	RoundScore       int
 }
 
 type item struct {
@@ -94,26 +77,59 @@ type item struct {
 type effectType string
 
 const (
-	IncreaseEncounter     effectType = "INCREASE_ENCOUNTER"
-	IncreaseEnvironment   effectType = "INCREASE_ENVIRONMENT"
-	IncreaseTechnical     effectType = "INCREASE_TECHNICAL"
-	IncreaseSoprannatural effectType = "INCREASE_SOPRANNATURAL"
+	AddAbilityPoints      effectType = "ADD_ABILITY_POINTS"
 	DrawMoreItems         effectType = "DRAW_MORE_ITEMS"
 	Treasure              effectType = "TREASURE"
 	AddSlotInventory      effectType = "ADD_SLOT_INVENTORY"
 	RecoverDiscardedCards effectType = "RECOVER_DISCARDED_CARDS"
 	FreeBreath            effectType = "FREE_BREATH"
-	ReduceOnePanicType    effectType = "REDUCE_ONE_PANIC"
+	ReducePanic           effectType = "REDUCE_PANIC"
 	LookAndReorder        effectType = "LOOK_AND_REORDER"
-	ReduceAllPanicTypes   effectType = "REDUCE_ALL_PANIC"
 )
 
 type itemEffect struct {
 	effectType effectType
+	targetType abilityType
 	value      int
 }
 
-// hasFreeBreath checks if the player has the FreeBreath effect active
+// --- HELPER FUNCTIONS ---
+
+func getDiceFaces(panicLevel int) int {
+	switch panicLevel {
+	case 0:
+		return 8
+	case 1:
+		return 6
+	case 2:
+		return 4
+	default:
+		return 0
+	}
+}
+
+func throwExplodingDice(faces int, randomizer *rand.Rand) int {
+	total := 0
+	rollsStr := ""
+	for {
+		roll := randomizer.Intn(faces) + 1
+		total += roll
+		if rollsStr != "" {
+			rollsStr += " + "
+		}
+		if roll == faces {
+			rollsStr += bold(purple(fmt.Sprintf("%d(CRIT!)", roll)))
+		} else {
+			rollsStr += fmt.Sprintf("%d", roll)
+			break
+		}
+	}
+	if total > faces {
+		fmt.Printf("(Rolled: %s = %d) ", rollsStr, total)
+	}
+	return total
+}
+
 func hasFreeBreath(p *player) bool {
 	for _, effect := range p.Effects {
 		if effect.effectType == FreeBreath {
@@ -123,56 +139,22 @@ func hasFreeBreath(p *player) bool {
 	return false
 }
 
-// calculateItemsToDraw calculates how many items to draw including DrawMoreItems effects
-func calculateItemsToDraw(baseReward int, p *player) int {
-	itemsToDraw := baseReward
-	for _, effect := range p.Effects {
-		if effect.effectType == DrawMoreItems {
-			itemsToDraw += effect.value
-		}
+func handlePanicTrigger(p *player) {
+	fmt.Printf("\t\t\t%s\n", red(bold("*** PANIC ATTACK! (Level 3 Reached) ***")))
+	p.Panic = 0
+	if len(p.Inventory) > 0 {
+		fmt.Printf("\t\t\t%s\n", yellow("Lost all items from inventory due to panic!"))
+		p.Inventory = make([]item, 0)
 	}
-	return itemsToDraw
-}
-
-// reducePanic reduces panic by 1 and ensures it doesn't go below 0
-func reducePanic(p *player, panicType abilityType) {
-	if p.Panic[panicType] > 0 {
-		p.Panic[panicType] -= 1
-		if p.Panic[panicType] < 0 {
-			p.Panic[panicType] = 0
-		}
-	}
-}
-
-// reducePanicBy reduces panic by a specific value and ensures it doesn't go below 0
-func reducePanicBy(p *player, panicType abilityType, value int) {
-	p.Panic[panicType] = p.Panic[panicType] - value
-	if p.Panic[panicType] < 0 {
-		p.Panic[panicType] = 0
-	}
-}
-
-// handlePanicTrigger handles all effects when panic is triggered
-func handlePanicTrigger(p *player, panicType abilityType) {
-	fmt.Printf("\t\t\t%s\n", red(bold("*** PANIC! ***")))
-	p.Panic[panicType] = 0
-
-	// Lose all items
-	fmt.Printf("\t\t\t%s\n", yellow("Lost all items from inventory"))
-	p.Inventory = make([]item, 0)
-
-	// Discard 5 O2 cards
 	cardsToDiscard, newO2AfterPanic := draw(5, p.O2)
 	p.O2 = newO2AfterPanic
 	p.DiscardedO2 = append(p.DiscardedO2, cardsToDiscard...)
-	fmt.Printf("\t\t\t%s\n", yellow(fmt.Sprintf("Discarded %d O2 cards due to panic", len(cardsToDiscard))))
+	fmt.Printf("\t\t\t%s\n", yellow(fmt.Sprintf("Gasping for air! Discarded %d O2 cards.", len(cardsToDiscard))))
 }
 
-// drawO2CardForBreath draws an O2 card for breathing, handling FreeBreath effect
 func drawO2CardForBreath(p *player) ([]O2, bool) {
 	var cards []O2
 	var newO2 []O2
-
 	if !hasFreeBreath(p) {
 		cards, newO2 = draw(1, p.O2)
 		if len(cards) == 0 {
@@ -181,94 +163,121 @@ func drawO2CardForBreath(p *player) ([]O2, bool) {
 		p.O2 = newO2
 		p.DiscardedO2 = append(p.DiscardedO2, cards...)
 	} else {
-		// FreeBreath: draw card but put it back in the deck instead of discarding
 		cards, newO2 = draw(1, p.O2)
 		if len(cards) == 0 {
 			return nil, false
 		}
 		p.O2 = newO2
-		// Card is put back at the bottom of the deck with FreeBreath
 		p.O2 = append(p.O2, cards[0])
 	}
 	return cards, true
 }
 
-// checkCardResolved checks if a card is resolved successfully
-func checkCardResolved(p *player, card O2, diceResult int) bool {
-	ability := p.Ability[card.Type]
-	return ability.Value+ability.Modifier+diceResult > card.Value
-}
+// MODIFICA: Logica aggiornata per gestire carte ibride (Doppio Tipo)
+func resolveCardInteraction(p *player, card O2, randomizer *rand.Rand, actionName string) bool {
+	if p.Panic >= 3 {
+		handlePanicTrigger(p)
+		return false
+	}
+	diceFaces := getDiceFaces(p.Panic)
 
-// increasePanic increases panic by 1 and checks if panic is triggered
-func increasePanic(p *player, panicType abilityType) bool {
-	p.Panic[panicType] += 1
-	return p.Panic[panicType] >= p.PanicTollerance[panicType]
-}
+	// Preparazione Descrizione
+	cardDesc := string(card.Type)
+	if card.SecondaryType != "" {
+		cardDesc += " + " + string(card.SecondaryType) + " (BOSS)"
+	}
 
-// addItemsToInventory adds items to inventory, handling full inventory and treasure items
-func addItemsToInventory(p *player, items []item, actionType string, cardType abilityType, abilityValue, modifier, diceResult, cardValue int) {
-	for _, item := range items {
-		// Check if item is a treasure (has Treasure effect)
-		isTreasure := false
-		treasureValue := 0
-		for _, effect := range item.Effects {
-			if effect.effectType == Treasure {
-				isTreasure = true
-				treasureValue += effect.value
-			}
+	// Calcolo Disponibilità
+	availablePrimary := p.AbilityPool[card.Type]
+	availableSecondary := 0
+	if card.SecondaryType != "" {
+		availableSecondary = p.AbilityPool[card.SecondaryType]
+	}
+
+	fmt.Printf("\t\t\t%s: %s (Diff: %d) | Panic: %d (Dice: d%d)\n",
+		actionName, cyan(cardDesc), card.Value, p.Panic, diceFaces)
+
+	// Mostra Pool disponibili
+	fmt.Printf("\t\t\tPools -> %s: %d", card.Type, availablePrimary)
+	if card.SecondaryType != "" {
+		fmt.Printf(" | %s: %d", card.SecondaryType, availableSecondary)
+	}
+	fmt.Println()
+
+	reader := bufio.NewReader(os.Stdin)
+	spentPrimary := 0
+	spentSecondary := 0
+
+	// 1. Chiedi Primary
+	for {
+		fmt.Printf("\t\t\tSpend %s points? (0-%d): ", card.Type, availablePrimary)
+		input, _ := reader.ReadString('\n')
+		input = strings.TrimSpace(input)
+		val, err := strconv.Atoi(input)
+		if err == nil && val >= 0 && val <= availablePrimary {
+			spentPrimary = val
+			break
 		}
+		fmt.Println("\t\t\tInvalid amount.")
+	}
 
-		if isTreasure {
-			// Treasure items go directly to treasure, not inventory
-			p.Treasure += treasureValue
-			fmt.Printf("\t\t\t%s '%s' %s %d + %d + %d > %d: found treasure = %s %s\n",
-				actionType, cardType, green("RESOLVED"), abilityValue, modifier, diceResult, cardValue,
-				yellow(item.Type), green(fmt.Sprintf("(+%d treasure)", treasureValue)))
-		} else {
-			// Regular items go to inventory
-			if len(p.Inventory) < p.MaxInventorySize {
-				p.Inventory = append(p.Inventory, item)
-				fmt.Printf("\t\t\t%s '%s' %s %d + %d + %d > %d: item found = %s\n",
-					actionType, cardType, green("RESOLVED"), abilityValue, modifier, diceResult, cardValue,
-					cyan(item.Type))
-			} else {
-				fmt.Printf("\t\t\t%s '%s' %s %d + %d + %d > %d: item found = %s %s\n",
-					actionType, cardType, green("RESOLVED"), abilityValue, modifier, diceResult, cardValue,
-					cyan(item.Type), yellow("(INVENTORY FULL, ITEM LOST)"))
+	// 2. Chiedi Secondary (se esiste)
+	if card.SecondaryType != "" {
+		for {
+			fmt.Printf("\t\t\tSpend %s points? (0-%d): ", card.SecondaryType, availableSecondary)
+			input, _ := reader.ReadString('\n')
+			input = strings.TrimSpace(input)
+			val, err := strconv.Atoi(input)
+			if err == nil && val >= 0 && val <= availableSecondary {
+				spentSecondary = val
+				break
 			}
+			fmt.Println("\t\t\tInvalid amount.")
 		}
+	}
+
+	// Applica spesa
+	p.AbilityPool[card.Type] -= spentPrimary
+	if card.SecondaryType != "" {
+		p.AbilityPool[card.SecondaryType] -= spentSecondary
+	}
+
+	totalSpent := spentPrimary + spentSecondary
+	diceResult := throwExplodingDice(diceFaces, randomizer)
+	total := totalSpent + diceResult
+
+	fmt.Printf("\t\t\tResult: Spent %d + Rolled %d = %d vs Diff %d ... ",
+		totalSpent, diceResult, total, card.Value)
+
+	if total >= card.Value {
+		fmt.Printf("%s\n", green("SUCCESS!"))
+		p.RoundScore += card.Value
+		fmt.Printf("\t\t\t%s (+%d score)\n", yellow("Round Score Increased"), card.Value)
+		return true
+	} else {
+		fmt.Printf("%s\n", red("FAILURE."))
+		p.Panic++
+		fmt.Printf("\t\t\tPanic increased to %d\n", p.Panic)
+		if p.Panic >= 3 {
+			handlePanicTrigger(p)
+		}
+		return false
 	}
 }
 
-// increaseAbilityModifier increases the modifier for a specific ability type
-func increaseAbilityModifier(p *player, abilityType abilityType, value int) {
-	ability := p.Ability[abilityType]
-	ability.Modifier += value
-	p.Ability[abilityType] = ability
-}
-
-// resetTemporaryEffects resets all temporary effects at the end of a turn
-func resetTemporaryEffects(p *player) {
-	// Reset ability modifiers to 0
-	for abilityType := range p.Ability {
-		ability := p.Ability[abilityType]
-		ability.Modifier = 0
-		p.Ability[abilityType] = ability
-	}
-
-	// Clear temporary effects (DrawMoreItems, FreeBreath)
-	// Keep only permanent effects if any (currently none are permanent in Effects)
-	p.Effects = make([]itemEffect, 0)
-}
-
-// printPlayerStatus prints the current status of the player
 func printPlayerStatus(p *player) {
-	fmt.Printf("\t\t\t%s\n", bold(cyan(fmt.Sprintf("--- %s STATUS ---", p.Id))))
-	fmt.Printf("\t\t\tO2 Cards: %s | Discarded: %s\n",
-		cyan(fmt.Sprintf("%d", len(p.O2))), yellow(fmt.Sprintf("%d", len(p.DiscardedO2))))
-	fmt.Printf("\t\t\tTreasure: %s\n", yellow(fmt.Sprintf("%d", p.Treasure)))
-	fmt.Printf("\t\t\tInventory (%s/%s): ",
-		cyan(fmt.Sprintf("%d", len(p.Inventory))), cyan(fmt.Sprintf("%d", p.MaxInventorySize)))
+	fmt.Printf("\t\t\t%s\n", bold(cyan(fmt.Sprintf("--- %s STATUS (Score: %d) ---", p.Id, p.RoundScore))))
+	fmt.Printf("\t\t\tO2 Cards (HP): %s | Panic: ", cyan(fmt.Sprintf("%d", len(p.O2))))
+	panicColor := green
+	if p.Panic == 1 {
+		panicColor = yellow
+	} else if p.Panic >= 2 {
+		panicColor = red
+	}
+	fmt.Printf("%s (Dice: d%d)\n", panicColor(fmt.Sprintf("%d/3", p.Panic)), getDiceFaces(p.Panic))
+	fmt.Printf("\t\t\tPools: [Enc: %d] [Env: %d] [Tec: %d] [Sop: %d]\n",
+		p.AbilityPool[Encounter], p.AbilityPool[Environment], p.AbilityPool[Technical], p.AbilityPool[Soprannatural])
+	fmt.Printf("\t\t\tInventory (%d/%d): ", len(p.Inventory), p.MaxInventorySize)
 	if len(p.Inventory) == 0 {
 		fmt.Print(yellow("Empty"))
 	} else {
@@ -280,976 +289,470 @@ func printPlayerStatus(p *player) {
 		}
 	}
 	fmt.Println()
-	fmt.Printf("\t\t\tAbilities: ")
-	first := true
-	for abilityType, ability := range p.Ability {
-		if !first {
-			fmt.Print(" | ")
-		}
-		fmt.Printf("%s: %s", abilityType, cyan(fmt.Sprintf("%d", ability.Value)))
-		if ability.Modifier != 0 {
-			if ability.Modifier > 0 {
-				fmt.Printf(" %s", green(fmt.Sprintf("(+%d)", ability.Modifier)))
-			} else {
-				fmt.Printf(" %s", red(fmt.Sprintf("(%d)", ability.Modifier)))
-			}
-		}
-		first = false
-	}
-	fmt.Println()
-	fmt.Printf("\t\t\tPanic: ")
-	first = true
-	for panicType, panicValue := range p.Panic {
-		if !first {
-			fmt.Print(" | ")
-		}
-		panicColor := green
-		if panicValue >= p.PanicTollerance[panicType] {
-			panicColor = red
-		} else if panicValue > 0 {
-			panicColor = yellow
-		}
-		fmt.Printf("%s: %s/%s", panicType,
-			panicColor(fmt.Sprintf("%d", panicValue)),
-			cyan(fmt.Sprintf("%d", p.PanicTollerance[panicType])))
-		first = false
-	}
-	fmt.Println()
 	fmt.Printf("\t\t\t%s\n", cyan("-------------------"))
 }
 
+// --- MAIN ---
+
 func main() {
-
 	randomizer := rand.New(rand.NewSource(time.Now().UnixNano()))
+	reader := bufio.NewReader(os.Stdin)
 
-	commonItemsCount := 16
-	uncommonItemsCount := 8
-	rareItemsCount := 6
-	veryRareItemsCount := 3
-	legendaryItemsCount := 1
-
-	commonItems := []item{
-		{
-			Type: "Coltello", // +1 agli incontri
-			Effects: []itemEffect{
-				{
-					effectType: IncreaseEncounter,
-					value:      2,
-				},
-			},
-		},
-		{
-			Type: "Torcia", // +1 agli oggetti trovati
-			Effects: []itemEffect{
-				{
-					effectType: DrawMoreItems,
-					value:      1,
-				},
-			},
-		},
-		{
-			Type: "Giubbotto rinforzato", // +1 agli incontri
-			Effects: []itemEffect{
-				{
-					effectType: IncreaseEncounter,
-					value:      1,
-				},
-			},
-		},
-		{
-			Type: "1 moneta", // tesoro
-			Effects: []itemEffect{
-				{
-					effectType: Treasure,
-					value:      1,
-				},
-			},
-		},
-		{
-			Type: "Sacca maggiorata", // aggiunge uno slot in più all'inventario
-			Effects: []itemEffect{
-				{
-					effectType: AddSlotInventory,
-					value:      1,
-				},
-			},
-		},
-		{
-			Type: "Attrezzi da riparazione", // +1 agli imprevisti tecnici
-			Effects: []itemEffect{
-				{
-					effectType: IncreaseTechnical,
-					value:      1,
-				},
-			},
-		},
-		{
-			Type: "Pinne migliorate", // +1 agli imprevisti ambientali
-			Effects: []itemEffect{
-				{
-					effectType: IncreaseEnvironment,
-					value:      1,
-				},
-			},
-		},
-		{
-			Type: "Bolla d'aria", // recupera una carta ossigeno scartata
-			Effects: []itemEffect{
-				{
-					effectType: RecoverDiscardedCards,
-					value:      1,
-				},
-			},
-		},
-		{
-			Type: "Collana delle sirene", // +1 agli ineffetti soprannaturali
-			Effects: []itemEffect{
-				{
-					effectType: IncreaseSoprannatural,
-					value:      1,
-				},
-			},
-		},
-		{
-			Type: "Torcia", // +1 agli oggetti trovati
-			Effects: []itemEffect{
-				{
-					effectType: DrawMoreItems,
-					value:      1,
-				},
-			},
-		},
-		{
-			Type: "Amuleto del tritone", // +1 agli effetti soprannaturali
-			Effects: []itemEffect{
-				{
-					effectType: IncreaseSoprannatural,
-					value:      1,
-				},
-			},
-		},
-		{
-			Type: "1 moneta", // tesoro
-			Effects: []itemEffect{
-				{
-					effectType: Treasure,
-					value:      1,
-				},
-			},
-		},
-		{
-			Type: "Sacca maggiorata", // aggiunge uno slot in più all'inventario
-			Effects: []itemEffect{
-				{
-					effectType: AddSlotInventory,
-					value:      1,
-				},
-			},
-		},
-		{
-			Type: "Attrezzi da riparazione", // +1 alle esplorazioni
-			Effects: []itemEffect{
-				{
-					effectType: IncreaseTechnical,
-					value:      1,
-				},
-			},
-		},
-		{
-			Type: "Pinne migliorate", // +1 agli imprevisti ambientali
-			Effects: []itemEffect{
-				{
-					effectType: IncreaseEnvironment,
-					value:      1,
-				},
-			},
-		},
-		{
-			Type: "1 Moneta", // recupera una carta ossigeno scartata
-			Effects: []itemEffect{
-				{
-					effectType: Treasure,
-					value:      1,
-				},
-			},
-		},
+	// --- OGGETTI ---
+	commonItemsPool := []item{
+		{Type: "Coltello arrugginito", Effects: []itemEffect{{effectType: AddAbilityPoints, targetType: Encounter, value: 1}}},
+		{Type: "Vecchia Torcia", Effects: []itemEffect{{effectType: AddAbilityPoints, targetType: Environment, value: 1}}},
+		{Type: "Attrezzi base", Effects: []itemEffect{{effectType: AddAbilityPoints, targetType: Technical, value: 1}}},
+		{Type: "Amuleto di latta", Effects: []itemEffect{{effectType: AddAbilityPoints, targetType: Soprannatural, value: 1}}},
+		{Type: "1 Moneta", Effects: []itemEffect{{effectType: Treasure, value: 1}}},
+		{Type: "1 Moneta", Effects: []itemEffect{{effectType: Treasure, value: 1}}},
+		{Type: "1 Moneta", Effects: []itemEffect{{effectType: Treasure, value: 1}}},
+		{Type: "1 Moneta", Effects: []itemEffect{{effectType: Treasure, value: 1}}},
+		{Type: "1 Moneta", Effects: []itemEffect{{effectType: Treasure, value: 1}}},
+		{Type: "1 Moneta", Effects: []itemEffect{{effectType: Treasure, value: 1}}},
+		{Type: "1 Moneta", Effects: []itemEffect{{effectType: Treasure, value: 1}}},
+		{Type: "1 Moneta", Effects: []itemEffect{{effectType: Treasure, value: 1}}},
 	}
-
-	uncommonItems := []item{
-		{
-			Type: "Fiocina", // +3 agli incontri
-			Effects: []itemEffect{
-				{
-					effectType: IncreaseEncounter,
-					value:      3,
-				},
-			},
-		},
-		{
-			Type: "Barometro migliorato", // +3 agli imprevisti ambientali
-			Effects: []itemEffect{
-				{
-					effectType: IncreaseEnvironment,
-					value:      3,
-				},
-			},
-		},
-		{
-			Type: "3 Monete", // tesoro
-			Effects: []itemEffect{
-				{
-					effectType: Treasure,
-					value:      3,
-				},
-			},
-		},
-		{
-			Type: "Collana di corallo", // +3 agli imprevisti ambientali
-			Effects: []itemEffect{
-				{
-					effectType: IncreaseSoprannatural,
-					value:      3,
-				},
-			},
-		},
-		{
-			Type: "3 Monete", // tesoro
-			Effects: []itemEffect{
-				{
-					effectType: Treasure,
-					value:      3,
-				},
-			},
-		},
-		{
-			Type: "Sacca d'aria", // recupera 2 carte ossigeno scartate
-			Effects: []itemEffect{
-				{
-					effectType: RecoverDiscardedCards,
-					value:      2,
-				},
-			},
-		},
-		{
-			Type: "Respiratore migliorato", // il respiro non consuma ossigeno
-			Effects: []itemEffect{
-				{
-					effectType: FreeBreath,
-					value:      1,
-				},
-			},
-		},
-		{
-			Type: "Kit antistress", // riduce un tipo di panico di 1
-			Effects: []itemEffect{
-				{
-					effectType: ReduceOnePanicType,
-					value:      1,
-				},
-			},
-		},
+	uncommonItemsPool := []item{
+		{Type: "Fiocina", Effects: []itemEffect{{effectType: AddAbilityPoints, targetType: Encounter, value: 2}}},
+		{Type: "Pinne Pro", Effects: []itemEffect{{effectType: AddAbilityPoints, targetType: Environment, value: 2}}},
+		{Type: "Attrezzi Pro", Effects: []itemEffect{{effectType: AddAbilityPoints, targetType: Technical, value: 2}}},
+		{Type: "Amuleto delle sirene", Effects: []itemEffect{{effectType: AddAbilityPoints, targetType: Soprannatural, value: 2}}},
+		{Type: "Sacca Extra", Effects: []itemEffect{{effectType: AddSlotInventory, value: 1}}},
+		{Type: "Bolla d'aria", Effects: []itemEffect{{effectType: RecoverDiscardedCards, value: 2}}},
+		{Type: "3 Monete", Effects: []itemEffect{{effectType: Treasure, value: 3}}},
+		{Type: "3 Monete", Effects: []itemEffect{{effectType: Treasure, value: 3}}},
 	}
-
-	rareItems := []item{
-		{
-			Type: "Bombola aggiuntiva", // recupera 3 carte ossigeno scartate
-			Effects: []itemEffect{
-				{
-					effectType: RecoverDiscardedCards,
-					value:      3,
-				},
-			},
-		},
-		{
-			Type: "Tridente di poseidone", // +2 agli incontri e agli imprevisti sovrannaturali
-			Effects: []itemEffect{
-				{
-					effectType: IncreaseEncounter,
-					value:      2,
-				},
-				{
-					effectType: IncreaseSoprannatural,
-					value:      2,
-				},
-			},
-		},
-		{
-			Type: "Drone autoguidato", // +2 agli imprevisti ambientali e tecnici
-			Effects: []itemEffect{
-				{
-					effectType: IncreaseEnvironment,
-					value:      2,
-				},
-				{
-					effectType: IncreaseTechnical,
-					value:      2,
-				},
-			},
-		},
-		{
-			Type: "Kit antistress migliorato", // riduce di 2 un tipo di panico
-			Effects: []itemEffect{
-				{
-					effectType: ReduceOnePanicType,
-					value:      2,
-				},
-			},
-		},
-		{
-			Type: "5 Monete", // tesoro
-			Effects: []itemEffect{
-				{
-					effectType: Treasure,
-					value:      5,
-				},
-			},
-		},
-		{
-			Type: "5 Monete", // tesoro
-			Effects: []itemEffect{
-				{
-					effectType: Treasure,
-					value:      5,
-				},
-			},
-		},
+	rareItemsPool := []item{
+		{Type: "Tridente", Effects: []itemEffect{
+			{effectType: AddAbilityPoints, targetType: Encounter, value: 2},
+			{effectType: AddAbilityPoints, targetType: Soprannatural, value: 2},
+		}},
+		{Type: "Drone Subacqueo", Effects: []itemEffect{
+			{effectType: AddAbilityPoints, targetType: Technical, value: 2},
+			{effectType: AddAbilityPoints, targetType: Environment, value: 2},
+		}},
+		{Type: "Bombola di Riserva", Effects: []itemEffect{{effectType: RecoverDiscardedCards, value: 2}}},
+		{Type: "Kit Medico", Effects: []itemEffect{{effectType: ReducePanic, value: 1}}},
+		{Type: "5 Monete", Effects: []itemEffect{{effectType: Treasure, value: 5}}},
+		{Type: "Respiratore Pro", Effects: []itemEffect{{effectType: FreeBreath, value: 1}}},
 	}
-
-	veryRareItems := []item{
-		{
-			Type: "Bombola aggiuntiva", // Recupera 5 delle carte scartate
-			Effects: []itemEffect{
-				{
-					effectType: RecoverDiscardedCards,
-					value:      5,
-				},
-			},
-		},
-		{
-			Type: "Sonar", // Guarda le prossime 5 carte ossigeno e mettile nell'ordine che vuoi
-			Effects: []itemEffect{
-				{
-					effectType: LookAndReorder,
-					value:      5,
-				},
-			},
-		},
-		{
-			Type: "10  monete", // tesoro
-			Effects: []itemEffect{
-				{
-					effectType: Treasure,
-					value:      10,
-				},
-			},
-		},
+	veryRareItemsPool := []item{
+		{Type: "Sonar", Effects: []itemEffect{{effectType: LookAndReorder, value: 3}}},
+		{Type: "Generatore O2", Effects: []itemEffect{{effectType: RecoverDiscardedCards, value: 3}}},
+		{Type: "10 Monete", Effects: []itemEffect{{effectType: Treasure, value: 10}}},
 	}
-
-	legendaryItems := []item{
-		{
-			Type: "Adrenalina", // riduce tutti i tipi di panico di 1
-			Effects: []itemEffect{
-				{
-					effectType: ReduceAllPanicTypes,
-					value:      1,
-				},
-			},
-		},
+	legendaryItemsPool := []item{
+		{Type: "Adrenalina Pura", Effects: []itemEffect{{effectType: ReducePanic, value: 2}}},
 	}
-
-	/*
-		specialItems := []string{
-			"Amuleto DJ", // Serve a proteggersi da DJ
-		}
-	*/
 
 	itemsDeck := make([]item, 0)
-	for i := 0; i < commonItemsCount; i++ {
-		itemsDeck = append(itemsDeck, commonItems[i])
+	addItems := func(pool []item, count int) {
+		for i := 0; i < count; i++ {
+			itemsDeck = append(itemsDeck, pool[randomizer.Intn(len(pool))])
+		}
 	}
+	addItems(commonItemsPool, 12)
+	addItems(uncommonItemsPool, 8)
+	addItems(rareItemsPool, 6)
+	addItems(veryRareItemsPool, 3)
+	addItems(legendaryItemsPool, 1)
 
-	for i := 0; i < uncommonItemsCount; i++ {
-		itemsDeck = append(itemsDeck, uncommonItems[i])
-	}
-
-	for i := 0; i < rareItemsCount; i++ {
-		itemsDeck = append(itemsDeck, rareItems[i])
-	}
-
-	for i := 0; i < veryRareItemsCount; i++ {
-		itemsDeck = append(itemsDeck, veryRareItems[i])
-	}
-
-	for i := 0; i < legendaryItemsCount; i++ {
-		itemsDeck = append(itemsDeck, legendaryItems[i])
-	}
-
+	// --- COSTRUZIONE MAZZO O2 ---
+	cardValuesPattern := []int{1, 1, 2, 2, 2, 3, 3, 3, 4, 5}
 	o2Deck := make([]O2, 40)
 	for i := range len(o2Deck) {
-
 		o2 := O2{}
-
-		switch (i / 10) + 1 {
-		case 1:
+		switch {
+		case i < 10:
 			o2.Type = Encounter
-			o2.Value = i + 1
-			o2.ItemReward = 1
-		case 2:
+		case i < 20:
 			o2.Type = Environment
-			o2.Value = (i - 10) + 1
-			o2.ItemReward = 1
-		case 3:
+		case i < 30:
 			o2.Type = Technical
-			o2.Value = (i - 20) + 1
-			o2.ItemReward = 1
-		case 4:
+		default:
 			o2.Type = Soprannatural
-			o2.Value = (i - 30) + 1
-			o2.ItemReward = 1
 		}
-
+		o2.Value = cardValuesPattern[i%10]
+		o2.Name = fmt.Sprintf("%s.%s-%d", o2.Type, o2.SecondaryType, o2.Value)
 		o2Deck[i] = o2
-
 	}
 
-	gamesWon := make(map[string]int)
+	// --- INSERIMENTO BOSS IBRIDI ---
+
+	// Boss 1: Il Leviatano (Encounter + Soprannatural) - Val 8
+	o2Deck = append(o2Deck, O2{Type: Encounter, SecondaryType: Soprannatural, Value: 8})
+
+	// Boss 2: Tempesta Abissale (Environment + Technical) - Val 7
+	o2Deck = append(o2Deck, O2{Type: Environment, SecondaryType: Technical, Value: 7})
+
+	// Boss 3: Relitto Alieno (Technical + Encounter) - Val 7
+	o2Deck = append(o2Deck, O2{Type: Technical, SecondaryType: Encounter, Value: 7})
+
+	// Boss 4: Maledizione degli Abissi (Soprannatural + Environment) - Val 6
+	o2Deck = append(o2Deck, O2{Type: Soprannatural, SecondaryType: Environment, Value: 6})
+
+	fmt.Println(purple("Boss Cards inserted into the deck! Beware the Leviathan..."))
 
 	players := make([]player, NumberOfPlayers)
 	for i := range NumberOfPlayers {
-		player := player{
+		p := player{
 			Id: fmt.Sprintf("P%d", i+1),
-			Ability: map[abilityType]abilityValue{
-				Encounter:     {Value: 3, Modifier: 0},
-				Environment:   {Value: 3, Modifier: 0},
-				Technical:     {Value: 3, Modifier: 0},
-				Soprannatural: {Value: 3, Modifier: 0},
-			},
-			Panic: map[abilityType]int{
-				Encounter:     0,
-				Environment:   0,
-				Technical:     0,
-				Soprannatural: 0,
-			},
-			PanicTollerance: map[abilityType]int{
+			AbilityPool: map[abilityType]int{
 				Encounter:     4,
 				Environment:   4,
 				Technical:     4,
 				Soprannatural: 4,
 			},
+			Panic:            0,
 			O2:               make([]O2, len(o2Deck)),
 			Inventory:        make([]item, 0),
 			MaxInventorySize: 3,
 		}
-
-		gamesWon[player.Id] = 0
-
-		copy(player.O2, o2Deck)
-
-		randomizer.Shuffle(len(player.O2), func(i, j int) {
-			player.O2[i], player.O2[j] = player.O2[j], player.O2[i]
-		})
-
-		players[i] = player
+		copy(p.O2, o2Deck)
+		randomizer.Shuffle(len(p.O2), func(i, j int) { p.O2[i], p.O2[j] = p.O2[j], p.O2[i] })
+		players[i] = p
 	}
 
 	for game := range NumberOfGames {
-
 		gameItems := make([]item, len(itemsDeck))
-
 		copy(gameItems, itemsDeck)
-
-		randomizer.Shuffle(len(gameItems), func(i, j int) {
-			gameItems[i], gameItems[j] = gameItems[j], gameItems[i]
-		})
-
-		for p := range players {
-			players[p].O2 = make([]O2, len(o2Deck))
-
-			players[p].Panic = map[abilityType]int{
-				Encounter:     0,
-				Environment:   0,
-				Technical:     0,
-				Soprannatural: 0,
-			}
-
-			// Reset ability modifiers and effects for new game
-			players[p].Ability = map[abilityType]abilityValue{
-				Encounter:     {Value: 3, Modifier: 0},
-				Environment:   {Value: 3, Modifier: 0},
-				Technical:     {Value: 3, Modifier: 0},
-				Soprannatural: {Value: 3, Modifier: 0},
-			}
-			players[p].Effects = make([]itemEffect, 0)
-			players[p].Inventory = make([]item, 0)
-			players[p].Treasure = 0
-			players[p].MaxInventorySize = 3
-			players[p].DiscardedO2 = make([]O2, 0)
-
-			copy(players[p].O2, o2Deck)
-
-			randomizer.Shuffle(len(players[p].O2), func(i, j int) {
-				players[p].O2[i], players[p].O2[j] = players[p].O2[j], players[p].O2[i]
-			})
-		}
+		randomizer.Shuffle(len(gameItems), func(i, j int) { gameItems[i], gameItems[j] = gameItems[j], gameItems[i] })
 
 		fmt.Printf("%s\n", bold(cyan(fmt.Sprintf("START GAME %d", game+1))))
-
 		round := 1
-		for playersAlive(players) > 1 && len(gameItems) > 0 {
 
-			fmt.Printf("\t%s\n", cyan(fmt.Sprintf("START ROUND %d", round)))
+		for playersAlive(players) > 0 && len(gameItems) > 0 {
+			fmt.Printf("\t%s\n", cyan(fmt.Sprintf("--- START ROUND %d ---", round)))
 
+			fmt.Printf("\t%s\n", purple(">>> Resting phase..."))
 			for i := range players {
-
-				if len(gameItems) == 0 {
-					break
-				}
-
-				fmt.Printf("\t\t%s\n", bold(cyan(fmt.Sprintf("START TURN FOR %s", players[i].Id))))
-
-				//BREATH
-				cards, ok := drawO2CardForBreath(&players[i])
-				if !ok {
-					fmt.Printf("\t\t%s\n", red(bold(fmt.Sprintf("*** DEAD %s! ***", players[i].Id))))
-					continue
-				}
-
-				diceResult := throwDice(4, randomizer)
-				ability := players[i].Ability[cards[0].Type]
-				if checkCardResolved(&players[i], cards[0], diceResult) {
-					itemsToDraw := calculateItemsToDraw(cards[0].ItemReward, &players[i])
-					items, newItems := draw(itemsToDraw, gameItems)
-					gameItems = newItems
-
-					// Process items: treasures go to treasure, others to inventory
-					for _, item := range items {
-						// Check if item is a treasure
-						isTreasure := false
-						treasureValue := 0
-						for _, effect := range item.Effects {
-							if effect.effectType == Treasure {
-								isTreasure = true
-								treasureValue += effect.value
-							}
-						}
-
-						if isTreasure {
-							// Treasure items go directly to treasure, not inventory
-							players[i].Treasure += treasureValue
-							fmt.Printf("\t\t\tBREATH '%s' %s %d + %d + %d > %d: found treasure = %s %s\n",
-								cards[0].Type, green("RESOLVED"), ability.Value, ability.Modifier, diceResult, cards[0].Value,
-								yellow(item.Type), green(fmt.Sprintf("(+%d treasure)", treasureValue)))
-						} else {
-							// Regular items go to inventory
-							if len(players[i].Inventory) < players[i].MaxInventorySize {
-								players[i].Inventory = append(players[i].Inventory, item)
-								fmt.Printf("\t\t\tBREATH '%s' %s %d + %d + %d > %d: found item = %s\n",
-									cards[0].Type, green("RESOLVED"), ability.Value, ability.Modifier, diceResult, cards[0].Value,
-									cyan(item.Type))
-							} else {
-								fmt.Printf("\t\t\tBREATH '%s' %s %d + %d + %d > %d: found item = %s %s\n",
-									cards[0].Type, green("RESOLVED"), ability.Value, ability.Modifier, diceResult, cards[0].Value,
-									cyan(item.Type), yellow("(INVENTORY FULL, ITEM LOST)"))
-							}
-						}
-						reducePanic(&players[i], cards[0].Type)
-					}
-				} else {
-					if increasePanic(&players[i], cards[0].Type) {
-						handlePanicTrigger(&players[i], cards[0].Type)
-						continue
+				if len(players[i].O2) > 0 {
+					if players[i].Panic == 0 {
+						rndAbility := allAbilities[randomizer.Intn(len(allAbilities))]
+						players[i].AbilityPool[rndAbility]++
+						fmt.Printf("\t\t%s is calm. Recovered 1 point in %s (Total: %d)\n",
+							players[i].Id, rndAbility, players[i].AbilityPool[rndAbility])
 					} else {
-						fmt.Printf("\t\t\tBREATH '%s' %s %d + %d + %d < %d: panic = %s\n",
-							cards[0].Type, red("NOT RESOLVED"), ability.Value, ability.Modifier, diceResult, cards[0].Value,
-							red(fmt.Sprintf("%d", players[i].Panic[cards[0].Type])))
+						fmt.Printf("\t\t%s is too stressed to rest! (Panic: %d) - No points recovered.\n",
+							red(players[i].Id), players[i].Panic)
 					}
+					players[i].RoundScore = 0
 				}
-
-				//EXECUTE ACTION
-				for a := 1; a <= 3; a++ {
-					if len(gameItems) == 0 {
-						break
-					}
-
-					actionCompleted := false
-					stopActions := false
-					inputOk := false
-					for !inputOk || !actionCompleted {
-						// Print player status before action choice
-						printPlayerStatus(&players[i])
-
-						var input string
-						fmt.Print("\t\t\tCHOOSE ACTION: (E)xplore - (U)se item - (P)ass")
-						if a == 1 {
-							fmt.Print(" - (C)alm down")
-						}
-						fmt.Print(": ")
-						fmt.Scanln(&input)
-
-						switch strings.ToLower(input) {
-						case "c":
-							if a != 1 {
-								fmt.Printf("\t\t\t%s\n", yellow("CALM DOWN can only be used as the first action of the round"))
-								continue
-							}
-							inputOk = true
-							// Choose panic type
-							panicTypeChosen := false
-							var chosenPanicType abilityType
-							for !panicTypeChosen {
-								for panicType, panicValue := range players[i].Panic {
-									if panicTypeChosen {
-										break
-									}
-									var input string
-									fmt.Printf("\t\t\tCHOOSE PANIC TYPE to calm down: %s (current: %d)? Y/N: ", panicType, panicValue)
-									fmt.Scanln(&input)
-
-									switch strings.ToLower(input) {
-									case "y":
-										chosenPanicType = panicType
-										panicTypeChosen = true
-									case "n":
-										// Continue to next panic type
-									default:
-										fmt.Printf("\t\t\tINVALID INPUT\n")
-										// Continue to next panic type
-									}
-									if panicTypeChosen {
-										break
-									}
-								}
-							}
-
-							// Roll dice
-							diceResult := throwDice(4, randomizer)
-							currentPanic := players[i].Panic[chosenPanicType]
-
-							fmt.Printf("\t\t\t%s: Rolled %s, Panic level: %s\n",
-								cyan("CALM DOWN"), yellow(fmt.Sprintf("%d", diceResult)), cyan(fmt.Sprintf("%d", currentPanic)))
-
-							if diceResult >= currentPanic {
-								// Success: reduce panic by 1
-								reducePanicBy(&players[i], chosenPanicType, 1)
-								fmt.Printf("\t\t\t%s: %s %s panic reduced by 1 (now: %s)\n",
-									cyan("CALM DOWN"), green("SUCCESS"), chosenPanicType, green(fmt.Sprintf("%d", players[i].Panic[chosenPanicType])))
-							} else {
-								// Failure: increase panic by 1 and check if panic triggers
-								fmt.Printf("\t\t\t%s: %s %s panic will increase by 1\n",
-									cyan("CALM DOWN"), red("FAILED"), chosenPanicType)
-								if increasePanic(&players[i], chosenPanicType) {
-									handlePanicTrigger(&players[i], chosenPanicType)
-									stopActions = true
-								} else {
-									fmt.Printf("\t\t\t%s: %s %s panic increased by 1 (now: %s)\n",
-										cyan("CALM DOWN"), red("FAILED"), chosenPanicType, red(fmt.Sprintf("%d", players[i].Panic[chosenPanicType])))
-								}
-							}
-
-							actionCompleted = true
-							// Calm down ends the player's turn
-							stopActions = true
-						case "u":
-							if len(players[i].Inventory) == 0 {
-								fmt.Printf("\t\t\tNO ITEMS IN INVENTORY\n")
-								continue
-							}
-							choosen := false
-							itemIndex := -1
-							for !choosen {
-								for idx, item := range players[i].Inventory {
-
-									if choosen {
-										break
-									}
-
-									fmt.Printf("\t\t\tCHOOSE ITEM: %s? Y/N: ", item.Type)
-									fmt.Scanln(&input)
-
-									switch strings.ToLower(input) {
-									case "y":
-										choosen = true
-										itemIndex = idx
-										for _, effect := range item.Effects {
-											fmt.Printf("\t\t\tEFFECT: %s - Value: %d\n", effect.effectType, effect.value)
-											switch effect.effectType {
-											case IncreaseEncounter:
-												increaseAbilityModifier(&players[i], Encounter, effect.value)
-											case IncreaseEnvironment:
-												increaseAbilityModifier(&players[i], Environment, effect.value)
-											case IncreaseTechnical:
-												increaseAbilityModifier(&players[i], Technical, effect.value)
-											case IncreaseSoprannatural:
-												increaseAbilityModifier(&players[i], Soprannatural, effect.value)
-											case DrawMoreItems:
-												players[i].Effects = append(players[i].Effects, effect)
-											case Treasure:
-												players[i].Treasure += effect.value
-											case AddSlotInventory:
-												players[i].MaxInventorySize += 1
-											case RecoverDiscardedCards:
-												cards, newDiscardedO2 := draw(effect.value, players[i].DiscardedO2)
-												players[i].DiscardedO2 = newDiscardedO2
-												players[i].O2 = append(cards, players[i].O2...)
-											case FreeBreath:
-												players[i].Effects = append(players[i].Effects, effect)
-											case ReduceOnePanicType:
-												choosen := false
-												for !choosen {
-													for ability, value := range players[i].Panic {
-
-														if choosen {
-															break
-														}
-
-														var input string
-														fmt.Printf("\t\t\tREDUCE PANIC TYPE: %s = %d? Y/N: ", ability, value)
-														fmt.Scanln(&input)
-
-														switch strings.ToLower(input) {
-														case "y":
-															reducePanicBy(&players[i], ability, effect.value)
-															choosen = true
-														case "n":
-															choosen = false
-														default:
-															fmt.Printf("\t\t\tINVALID INPUT")
-															continue
-														}
-													}
-												}
-											case LookAndReorder:
-												cards, newO2Cards := draw(effect.value, players[i].O2)
-
-												sort.Slice(cards, func(i, j int) bool {
-													return cards[i].Value < cards[j].Value
-												})
-
-												players[i].O2 = append(cards, newO2Cards...)
-
-											case ReduceAllPanicTypes:
-												for ability := range players[i].Panic {
-													reducePanicBy(&players[i], ability, effect.value)
-												}
-											}
-										}
-										// Remove item from inventory after use
-										if itemIndex >= 0 && itemIndex < len(players[i].Inventory) {
-											players[i].Inventory = append(players[i].Inventory[:itemIndex], players[i].Inventory[itemIndex+1:]...)
-										}
-										inputOk = true
-										// Item used, mark action as done
-										actionCompleted = true
-									case "n":
-										continue
-									default:
-										fmt.Printf("\t\t\tINVALID INPUT\n")
-										continue
-									}
-								}
-							}
-						case "e":
-							inputOk = true
-							cards, newO2 := draw(1, players[i].O2)
-							if len(cards) == 0 {
-								actionCompleted = true
-								stopActions = true
-								break
-							}
-
-							players[i].O2 = newO2
-							players[i].DiscardedO2 = append(players[i].DiscardedO2, cards...)
-							diceResult := throwDice(4, randomizer)
-							ability := players[i].Ability[cards[0].Type]
-							if checkCardResolved(&players[i], cards[0], diceResult) {
-								itemsToDraw := calculateItemsToDraw(cards[0].ItemReward, &players[i])
-								items, newItems := draw(itemsToDraw, gameItems)
-								if len(items) == 0 {
-									actionCompleted = true
-									stopActions = true
-								} else {
-									addItemsToInventory(&players[i], items, "ACTION", cards[0].Type, ability.Value, ability.Modifier, diceResult, cards[0].Value)
-									gameItems = newItems
-									reducePanic(&players[i], cards[0].Type)
-									// Action completed successfully, mark as done
-									actionCompleted = true
-								}
-							} else {
-								if increasePanic(&players[i], cards[0].Type) {
-									handlePanicTrigger(&players[i], cards[0].Type)
-									actionCompleted = true
-									stopActions = true
-								} else {
-									fmt.Printf("\t\t\tACTION '%s' %s %d + %d + %d <= %d : panic = %s\n",
-										cards[0].Type, red("NOT RESOLVED"), ability.Value, ability.Modifier, diceResult, cards[0].Value,
-										red(fmt.Sprintf("%d", players[i].Panic[cards[0].Type])))
-									// Action failed but was attempted, mark as done
-									actionCompleted = true
-								}
-							}
-						case "p":
-							inputOk = true
-							actionCompleted = true
-							stopActions = true
-						default:
-							fmt.Printf("\t\t\tINVALID INPUT\n")
-							continue
-						}
-					}
-
-					if stopActions {
-						break
-					}
-
-				}
-
-				// Reset temporary effects at the end of the turn
-				resetTemporaryEffects(&players[i])
-
-				fmt.Printf("\t\t%s\n", cyan(fmt.Sprintf("END TURN FOR %s", players[i].Id)))
-
 			}
 
-			fmt.Printf("\t%s\n", cyan(fmt.Sprintf("END ROUND %d", round)))
+			for i := range players {
+				if len(players[i].O2) == 0 {
+					continue
+				}
+				p := &players[i]
+				fmt.Printf("\t\t%s\n", bold(cyan(fmt.Sprintf("TURN: %s", p.Id))))
+
+				cards, ok := drawO2CardForBreath(p)
+				if !ok {
+					fmt.Printf("\t\t%s\n", red(bold(fmt.Sprintf("*** %s SUFFOCATED! ***", p.Id))))
+					continue
+				}
+				resolveCardInteraction(p, cards[0], randomizer, "BREATH CHECK")
+
+				actionsLeft := 3
+				if p.Panic >= 3 {
+					actionsLeft = 0
+				}
+
+				for a := 1; a <= actionsLeft; a++ {
+					printPlayerStatus(p)
+					fmt.Printf("\t\t\tACTION %d/%d: (E)xplore - (U)se item - (C)alm down - (P)ass: ", a, actionsLeft)
+					input, _ := reader.ReadString('\n')
+					input = strings.TrimSpace(strings.ToLower(input))
+
+					switch input {
+					case "c":
+						if p.Panic > 0 {
+							targetDifficulty := 5
+							willpowerDice := 6
+							fmt.Printf("\t\t\t%s (Target: %d)\n", bold(cyan("CALM DOWN CHECK")), targetDifficulty)
+							totalSpent := 0
+							spentMap := make(map[abilityType]int)
+							fmt.Println("\t\t\tChoose points to spend from each pool:")
+							order := []abilityType{Encounter, Environment, Technical, Soprannatural}
+							for _, abType := range order {
+								available := p.AbilityPool[abType]
+								if available == 0 {
+									continue
+								}
+								validInput := false
+								for !validInput {
+									fmt.Printf("\t\t\t- %s (Available: %d): ", abType, available)
+									input, _ := reader.ReadString('\n')
+									input = strings.TrimSpace(input)
+									if input == "" {
+										input = "0"
+									}
+									val, err := strconv.Atoi(input)
+									if err == nil && val >= 0 && val <= available {
+										spentMap[abType] = val
+										totalSpent += val
+										validInput = true
+									} else {
+										fmt.Printf("\t\t\t  Invalid amount (0-%d).\n", available)
+									}
+								}
+							}
+							for abType, amount := range spentMap {
+								p.AbilityPool[abType] -= amount
+							}
+							roll := randomizer.Intn(willpowerDice) + 1
+							total := totalSpent + roll
+							fmt.Printf("\t\t\tResult: Spent %d + Rolled %d (d%d) = %d vs Target %d ... ",
+								totalSpent, roll, willpowerDice, total, targetDifficulty)
+							if total >= targetDifficulty {
+								p.Panic--
+								fmt.Printf("%s (Panic is now %d)\n", green("SUCCESS!"), p.Panic)
+							} else {
+								fmt.Printf("%s (Panic remains %d)\n", red("FAILED."), p.Panic)
+							}
+						} else {
+							fmt.Println("\t\t\tYou are already calm.")
+							a--
+						}
+
+					case "u":
+						if len(p.Inventory) == 0 {
+							fmt.Println("\t\t\tInventory empty.")
+							a--
+							continue
+						}
+						fmt.Println("\t\t\tSelect item to use:")
+						for idx, it := range p.Inventory {
+							desc := it.Type
+							if len(it.Effects) > 0 {
+								desc += fmt.Sprintf(" [%s %d]", it.Effects[0].effectType, it.Effects[0].value)
+							}
+							fmt.Printf("\t\t\t[%d] %s\n", idx+1, cyan(desc))
+						}
+						fmt.Printf("\t\t\tChoose [1-%d] (or 0 to cancel): ", len(p.Inventory))
+						input, _ := reader.ReadString('\n')
+						input = strings.TrimSpace(input)
+						choice, err := strconv.Atoi(input)
+						if err == nil && choice > 0 && choice <= len(p.Inventory) {
+							index := choice - 1
+							item := p.Inventory[index]
+							fmt.Printf("\t\t\tUsing %s...\n", item.Type)
+							for _, eff := range item.Effects {
+								switch eff.effectType {
+								case AddAbilityPoints:
+									p.AbilityPool[eff.targetType] += eff.value
+									fmt.Printf("\t\t\tRestored %d points to %s\n", eff.value, eff.targetType)
+								case ReducePanic:
+									if p.Panic > 0 {
+										p.Panic -= eff.value
+										if p.Panic < 0 {
+											p.Panic = 0
+										}
+										fmt.Printf("\t\t\tPanic reduced by %d\n", eff.value)
+									} else {
+										fmt.Println("\t\t\t(Panic was already 0)")
+									}
+								case AddSlotInventory:
+									p.MaxInventorySize += eff.value
+									fmt.Println("\t\t\tInventory expanded.")
+								case RecoverDiscardedCards:
+									if len(p.DiscardedO2) > 0 {
+										recovered, remainingDiscarded := draw(eff.value, p.DiscardedO2)
+										p.DiscardedO2 = remainingDiscarded
+										p.O2 = append(p.O2, recovered...)
+										fmt.Printf("\t\t\tRecovered %d O2 cards from discard pile! (HP: %d)\n", len(recovered), len(p.O2))
+									} else {
+										fmt.Println("\t\t\tNo cards to recover in discard pile.")
+									}
+								}
+							}
+							p.Inventory = append(p.Inventory[:index], p.Inventory[index+1:]...)
+						} else if choice == 0 {
+							fmt.Println("\t\t\tCancelled.")
+							a--
+						} else {
+							fmt.Println("\t\t\tInvalid selection.")
+							a--
+						}
+
+					case "e":
+						cards, newO2 := draw(1, p.O2)
+						if len(cards) > 0 {
+							p.O2 = newO2
+							p.DiscardedO2 = append(p.DiscardedO2, cards...)
+							resolveCardInteraction(p, cards[0], randomizer, "EXPLORE")
+						} else {
+							fmt.Println("\t\t\tNo more O2 cards to explore.")
+						}
+					case "p":
+						actionsLeft = 0
+					default:
+						fmt.Println("\t\t\tInvalid command.")
+						a--
+					}
+				}
+				p.Effects = make([]itemEffect, 0)
+			}
+
+			fmt.Printf("\t\t%s\n", bold(yellow("--- LOOT PHASE (DRAFT) ---")))
+
+			type playerRef struct {
+				Index int
+				Score int
+				Id    string
+			}
+			var ranking []playerRef
+			for i, p := range players {
+				if len(p.O2) > 0 && p.RoundScore > 0 {
+					ranking = append(ranking, playerRef{Index: i, Score: p.RoundScore, Id: p.Id})
+				}
+			}
+			sort.Slice(ranking, func(i, j int) bool {
+				if ranking[i].Score == ranking[j].Score {
+					return players[ranking[i].Index].Panic < players[ranking[j].Index].Panic
+				}
+				return ranking[i].Score > ranking[j].Score
+			})
+
+			if len(ranking) == 0 {
+				fmt.Println("\t\tNo items found (No one scored points).")
+			} else {
+				itemsToDraw := len(ranking)
+				if itemsToDraw == 1 {
+					itemsToDraw = 2
+				}
+				marketItems, remainingDeck := draw(itemsToDraw, gameItems)
+				gameItems = remainingDeck
+				fmt.Printf("\t\tItems found: %d\n", len(marketItems))
+
+				for i, rankRef := range ranking {
+					if len(marketItems) == 0 {
+						break
+					}
+					p := &players[rankRef.Index]
+					fmt.Printf("\t\t%s (Score: %d) is choosing...\n", cyan(p.Id), rankRef.Score)
+					choiceIndex := 0
+					if len(marketItems) > 1 {
+						validChoice := false
+						for !validChoice {
+							fmt.Println("\t\tAvailable Items:")
+							for idx, it := range marketItems {
+								desc := it.Type
+								if len(it.Effects) > 0 {
+									desc += fmt.Sprintf(" (%s %d)", it.Effects[0].effectType, it.Effects[0].value)
+								}
+								fmt.Printf("\t\t\t[%d] %s\n", idx+1, yellow(desc))
+							}
+							fmt.Printf("\t\tChoose item [1-%d]: ", len(marketItems))
+							input, _ := reader.ReadString('\n')
+							input = strings.TrimSpace(input)
+							val, err := strconv.Atoi(input)
+							if err == nil && val >= 1 && val <= len(marketItems) {
+								choiceIndex = val - 1
+								validChoice = true
+							} else {
+								fmt.Println("\t\tInvalid selection.")
+							}
+						}
+					} else {
+						fmt.Printf("\t\tOnly one item left: %s. Auto-looting.\n", marketItems[0].Type)
+						choiceIndex = 0
+					}
+					selectedItem := marketItems[choiceIndex]
+					marketItems = append(marketItems[:choiceIndex], marketItems[choiceIndex+1:]...)
+
+					isTreasure := false
+					treasureVal := 0
+					for _, ef := range selectedItem.Effects {
+						if ef.effectType == Treasure {
+							isTreasure = true
+							treasureVal += ef.value
+						}
+					}
+					if isTreasure {
+						p.Treasure += treasureVal
+						fmt.Printf("\t\t%s obtained Treasure: %s (+%d)\n", p.Id, yellow(selectedItem.Type), treasureVal)
+					} else {
+						if len(p.Inventory) < p.MaxInventorySize {
+							p.Inventory = append(p.Inventory, selectedItem)
+							fmt.Printf("\t\t%s obtained Item: %s\n", p.Id, cyan(selectedItem.Type))
+						} else {
+							fmt.Printf("\t\tInventory FULL. Swap with an existing item? (y/n): ")
+							input, _ := reader.ReadString('\n')
+							if strings.TrimSpace(strings.ToLower(input)) == "y" {
+								for idx, invItem := range p.Inventory {
+									fmt.Printf("\t\t\t[%d] %s\n", idx+1, invItem.Type)
+								}
+								fmt.Print("\t\tDrop which item? [1-N]: ")
+								input, _ = reader.ReadString('\n')
+								dropIdx, err := strconv.Atoi(strings.TrimSpace(input))
+								if err == nil && dropIdx >= 1 && dropIdx <= len(p.Inventory) {
+									dropped := p.Inventory[dropIdx-1]
+									p.Inventory[dropIdx-1] = selectedItem
+									fmt.Printf("\t\tDropped %s and took %s.\n", dropped.Type, selectedItem.Type)
+								} else {
+									fmt.Println("\t\tInvalid input. Item discarded.")
+								}
+							} else {
+								fmt.Printf("\t\t%s discarded due to full inventory.\n", selectedItem.Type)
+							}
+						}
+					}
+					if len(ranking) == 1 && i == 0 {
+						fmt.Println("\t\tRemaining items are discarded.")
+						marketItems = make([]item, 0)
+					}
+				}
+			}
 			round++
 		}
 
-		fmt.Printf("%s\n", cyan(fmt.Sprintf("ITEMS LEFT: %d", len(gameItems))))
-
-		fmt.Printf("%s\n", bold(cyan(fmt.Sprintf("END GAME %d", game+1))))
-
+		fmt.Printf("%s\n", bold(cyan(fmt.Sprintf("GAME OVER"))))
+		var survivors []player
+		for _, p := range players {
+			if len(p.O2) > 0 {
+				survivors = append(survivors, p)
+			}
+		}
+		if len(survivors) == 0 {
+			fmt.Println(red("\tAll players perished in the deep. The ocean claims all."))
+		} else {
+			sort.Slice(survivors, func(i, j int) bool {
+				if survivors[i].Treasure == survivors[j].Treasure {
+					return len(survivors[i].O2) > len(survivors[j].O2)
+				}
+				return survivors[i].Treasure > survivors[j].Treasure
+			})
+			winner := survivors[0]
+			fmt.Println()
+			fmt.Printf("\t%s\n", bold(green("🏆 WE HAVE A WINNER! 🏆")))
+			fmt.Printf("\t%s survived with %s Coins!\n", bold(winner.Id), bold(yellow(fmt.Sprintf("%d", winner.Treasure))))
+			if len(survivors) > 1 {
+				fmt.Println("\tOther survivors:")
+				for i := 1; i < len(survivors); i++ {
+					p := survivors[i]
+					fmt.Printf("\t%d. %s (%d Coins)\n", i+1, p.Id, p.Treasure)
+				}
+			}
+		}
 	}
-
-	fmt.Println(gamesWon)
 }
 
 func playersAlive(players []player) int {
-
 	alivePlayers := len(players)
 	for _, player := range players {
 		if len(player.O2) == 0 {
 			alivePlayers--
 		}
-
 	}
-
 	return alivePlayers
-
 }
 
-func draw[T any](numberOfElementsToDraw int, slice []T) ([]T, []T) {
-
-	if len(slice) <= numberOfElementsToDraw {
-		numberOfElementsToDraw = len(slice)
+func draw[T any](n int, slice []T) ([]T, []T) {
+	if len(slice) <= n {
+		n = len(slice)
 	}
-
-	drawedElements := make([]T, numberOfElementsToDraw)
-	for i := 0; i < numberOfElementsToDraw; i++ {
-		drawedElement := slice[0]
-		drawedElements[i] = drawedElement
-		slice = slice[1:]
-	}
-
-	return drawedElements, slice
+	return slice[:n], slice[n:]
 }
-
-func look[T any](numberOfElementsToLook int, slice []T) []T {
-
-	if len(slice) <= numberOfElementsToLook {
-		numberOfElementsToLook = len(slice)
-	}
-
-	drawedElements := make([]T, numberOfElementsToLook)
-	for i := 0; i < numberOfElementsToLook; i++ {
-		drawedElement := slice[0]
-		drawedElements[i] = drawedElement
-	}
-
-	return drawedElements
-}
-
-func throwDice(faces int, randomizer *rand.Rand) int {
-	return randomizer.Intn(faces) + 1
-}
-
-/*
-
-I giocatori possono muoversi su 3 livelli di profondità
-Al livello 4 c'è DJ
-I giocatori per fare azioni consumano ossigeno pescando carte da un mazzo che ne rappresenta la riserva.
-Finite le carte ossigeno il giocatore muore
-Le carte pescate possono far aumentare il livello di panico del giocatore.
-Quando il livello di panico supera una certa soglia si attiva un effetto molto negativo
-Esplorando i fondali è possibile trovare oggetti e tesori
-
-*/
-
-/*
-
-Giocatore parte con:
- - Equip base:
-	- Pinne
-	- Bombola
-	- Maschera
-
-	Avanzato: si possono spendere soldi per partire con equip extra
-
-Resistenze base:
-	- Fisico
-	- Mentale
-	- Empatia
-	- Superstizione
-
-	Avanzato: si possono modificare i valori aggiungendo o sottraendo punti mantenendo però il totale invariato
-
-1 Mazzo oggetti comune a tutti i giocatori:
-
-- Carte oggetti utilità
-- Carte tesoro
-- Carte amuleto
-
-1 Mazzo ossigno per giocatore:
-
-Ogni carta ha delle icone e un numero che ne rappresenta il valore
-- Carte fanno accumulare un tipo di panico (superata una soglia scatta il panico)
-- Il panico si accumula quando provando a fare un'azione fallisci
-- I giocatori saranno più bravi a fare certe cose e meno bravi a farne altre (vedi resistenze)
-
-Ogni turno il giocatore dovrà pescare delle carte respiro.
-Queste carte avranno un numero e delle icone
-	- Tridente: rappresenta la capacità di fare azioni offensive
-	- Sonar: capacità esplorativa
-	- Esoterica: capacità di r
-
-	In base alle icone e ai punti azione trovati il giocatore dovrà decidere cosa fare
-	Se riuscirà nell'azione la risolverà
-	Altrimenti aumenterà il panico nella caratteristica corrispondente
-	Es. se attacca qualcuno o qualcosa e fallisce allora aumenterà il panico fisico
-		se esplorerà e fallirà nell'esplorazione allora aumenterà il panico mentale
-
-	Superata la soglia di panico per quella caratteristica il giocatore subità gli effetti in base al tipo di panico:
-		- Empatia scatenerà paranoia e vorrà attaccare gli altri etc.
-*/
-
-/*
-
-Loop di gioco
-
-	1. Respiro: Pesco una carta ossigeno e provo a risolverla
-				Se la risolvo con successo guadagno o punti per le prossime azioni oppure oggetti
-				Se non la risolvo prendo punti panico
-
-				Se supero una certa dose di panico si attiva l'effetto
-
-	2. Scelta dell'azione costo 1 O2:
-		- Mi sposto di un livello in basso
-		- Risalgo di un livello
-		- Esploro
-
-		Provo a risolvere l'azione (vedi respiro)
-
-		Se ho fatto meno di 3 azioni posso continuare e provare a farne altre.
-
-
-
-*/
