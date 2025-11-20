@@ -731,10 +731,10 @@ func main() {
 				Soprannatural: 0,
 			},
 			PanicTollerance: map[abilityType]int{
-				Encounter:     3,
-				Environment:   3,
-				Technical:     3,
-				Soprannatural: 3,
+				Encounter:     4,
+				Environment:   4,
+				Technical:     4,
+				Soprannatural: 4,
 			},
 			O2:               make([]O2, len(o2Deck)),
 			Inventory:        make([]item, 0),
@@ -928,7 +928,7 @@ func main() {
 							fmt.Printf("\t\t\t%s: Rolled %s, Panic level: %s\n",
 								cyan("CALM DOWN"), yellow(fmt.Sprintf("%d", diceResult)), cyan(fmt.Sprintf("%d", currentPanic)))
 
-							if diceResult > currentPanic {
+							if diceResult >= currentPanic {
 								// Success: reduce panic by 1
 								reducePanicBy(&players[i], chosenPanicType, 1)
 								fmt.Printf("\t\t\t%s: %s %s panic reduced by 1 (now: %s)\n",
