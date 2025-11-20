@@ -125,7 +125,7 @@ func throwExplodingDice(faces int, randomizer *rand.Rand) int {
 		}
 	}
 	if total > faces {
-		fmt.Printf("(Rolled: %s = %d) ", rollsStr, total)
+		fmt.Printf("\t\t\t(Rolled: %s = %d)\n", rollsStr, total)
 	}
 	return total
 }
@@ -194,7 +194,7 @@ func resolveCardInteraction(p *player, card O2, randomizer *rand.Rand, actionNam
 		availableSecondary = p.AbilityPool[card.SecondaryType]
 	}
 
-	fmt.Printf("\t\t\t%s: %s (Diff: %d) | Panic: %d (Dice: d%d)\n",
+	fmt.Printf("\t\t\t%s: %s (Difficulty: %d) | Panic: %d (Dice: d%d)\n",
 		actionName, cyan(cardDesc), card.Value, p.Panic, diceFaces)
 
 	// Mostra Pool disponibili
@@ -246,10 +246,10 @@ func resolveCardInteraction(p *player, card O2, randomizer *rand.Rand, actionNam
 	diceResult := throwExplodingDice(diceFaces, randomizer)
 	total := totalSpent + diceResult
 
-	fmt.Printf("\t\t\tResult: Spent %d + Rolled %d = %d vs Diff %d ... ",
+	fmt.Printf("\t\t\tResult: Spent %d + Rolled %d = %d vs Difficulty %d ... ",
 		totalSpent, diceResult, total, card.Value)
 
-	if total >= card.Value {
+	if total > card.Value {
 		fmt.Printf("%s\n", green("SUCCESS!"))
 		p.RoundScore += card.Value
 		fmt.Printf("\t\t\t%s (+%d score)\n", yellow("Round Score Increased"), card.Value)
@@ -267,7 +267,7 @@ func resolveCardInteraction(p *player, card O2, randomizer *rand.Rand, actionNam
 
 func printPlayerStatus(p *player) {
 	fmt.Printf("\t\t\t%s\n", bold(cyan(fmt.Sprintf("--- %s STATUS (Score: %d) ---", p.Id, p.RoundScore))))
-	fmt.Printf("\t\t\tO2 Cards (HP): %s | Panic: ", cyan(fmt.Sprintf("%d", len(p.O2))))
+	fmt.Printf("\t\t\tO2 Cards (HP): %s | Treasure: %s | Panic: ", cyan(fmt.Sprintf("%d", len(p.O2))), bold(yellow(fmt.Sprintf("%d", p.Treasure))))
 	panicColor := green
 	if p.Panic == 1 {
 		panicColor = yellow
@@ -471,7 +471,7 @@ func main() {
 					switch input {
 					case "c":
 						if p.Panic > 0 {
-							targetDifficulty := 5
+							targetDifficulty := 6
 							willpowerDice := 6
 							fmt.Printf("\t\t\t%s (Target: %d)\n", bold(cyan("CALM DOWN CHECK")), targetDifficulty)
 							totalSpent := 0
