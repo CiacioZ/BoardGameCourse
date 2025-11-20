@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/xuri/excelize/v2"
 )
 
 // --- ANSI COLOR CODES ---
@@ -36,6 +38,96 @@ func purple(text string) string                 { return colorize(text, colorPur
 var NumberOfGames = 1
 var NumberOfPlayers = 2
 
+// --- EXCEL HELPER STRUCT ---
+type GameLogger struct {
+	File      *excelize.File
+	SheetName string
+	RowIndex  int
+}
+
+func NewGameLogger() *GameLogger {
+	f := excelize.NewFile()
+	return &GameLogger{
+		File:     f,
+		RowIndex: 1,
+	}
+}
+
+func (gl *GameLogger) InitSheet(gameNum int) {
+	sheetName := fmt.Sprintf("Game %d", gameNum)
+	gl.SheetName = sheetName
+	index, _ := gl.File.NewSheet(sheetName)
+	gl.File.SetActiveSheet(index)
+	gl.RowIndex = 1
+
+	// Headers
+	headers := []string{"Round", "Player", "Phase", "Action", "Details", "Outcome", "Panic", "HP (O2)", "Points", "Treasure", "Log Message"}
+	for i, h := range headers {
+		cell, _ := excelize.CoordinatesToCellName(i+1, 1)
+		gl.File.SetCellValue(sheetName, cell, h)
+	}
+	gl.RowIndex++
+}
+
+// LogEvent scrive su Excel e (opzionalmente) su console se serve debugging extra,
+// ma qui lo usiamo per tracciare i dati silenziosamente mentre il gioco stampa a video.
+func (gl *GameLogger) LogEvent(round int, p *player, phase, action, details, outcome, message string) {
+	if gl == nil {
+		return
+	}
+
+	// Valori di default se p è nil (Evento di Sistema)
+	playerId := "System"
+	panicVal := 0
+	o2Len := 0
+	totalPoints := 0
+	treasure := 0
+
+	// Se il giocatore esiste, sovrascrivi con i dati reali
+	if p != nil {
+		playerId = p.Id
+		panicVal = p.Panic
+		o2Len = len(p.O2)
+		treasure = p.Treasure
+		for _, v := range p.AbilityPool {
+			totalPoints += v
+		}
+	}
+
+	// Scrive riga usando le variabili calcolate
+	gl.File.SetCellValue(gl.SheetName, fmt.Sprintf("A%d", gl.RowIndex), round)
+	gl.File.SetCellValue(gl.SheetName, fmt.Sprintf("B%d", gl.RowIndex), playerId)
+	gl.File.SetCellValue(gl.SheetName, fmt.Sprintf("C%d", gl.RowIndex), phase)
+	gl.File.SetCellValue(gl.SheetName, fmt.Sprintf("D%d", gl.RowIndex), action)
+	gl.File.SetCellValue(gl.SheetName, fmt.Sprintf("E%d", gl.RowIndex), details)
+	gl.File.SetCellValue(gl.SheetName, fmt.Sprintf("F%d", gl.RowIndex), outcome)
+	gl.File.SetCellValue(gl.SheetName, fmt.Sprintf("G%d", gl.RowIndex), panicVal)
+	gl.File.SetCellValue(gl.SheetName, fmt.Sprintf("H%d", gl.RowIndex), o2Len)
+	gl.File.SetCellValue(gl.SheetName, fmt.Sprintf("I%d", gl.RowIndex), totalPoints)
+	gl.File.SetCellValue(gl.SheetName, fmt.Sprintf("J%d", gl.RowIndex), treasure)
+	gl.File.SetCellValue(gl.SheetName, fmt.Sprintf("K%d", gl.RowIndex), message)
+
+	gl.RowIndex++
+}
+
+func (gl *GameLogger) Save(filename string) {
+	// Rimuove Sheet1 default se non usato
+	gl.File.DeleteSheet("Sheet1")
+	if err := gl.File.SaveAs(filename); err != nil {
+		fmt.Println(red("Error saving Excel file:"), err)
+	} else {
+		fmt.Println(green(fmt.Sprintf("Game logs saved to %s", filename)))
+	}
+}
+
+// Rimuove i codici colore ANSI per il log Excel
+func stripAnsi(str string) string {
+	// Implementazione molto basilare, rimuove il carattere Escape principale
+	// Per una pulizia perfetta servirebbe una regex, ma per i log excel basta non avere troppa sporcizia
+	// Qui salviamo il messaggio raw o una versione semplificata
+	return str
+}
+
 // --- TYPES & CONSTANTS ---
 type abilityType string
 
@@ -48,11 +140,10 @@ const (
 
 var allAbilities = []abilityType{Encounter, Environment, Technical, Soprannatural}
 
-// MODIFICA: Aggiunto SecondaryType per i Boss Ibridi
 type O2 struct {
 	Name          string
 	Type          abilityType
-	SecondaryType abilityType // Se presente, è una carta ibrida
+	SecondaryType abilityType
 	Value         int
 }
 
@@ -139,8 +230,11 @@ func hasFreeBreath(p *player) bool {
 	return false
 }
 
-func handlePanicTrigger(p *player) {
+func handlePanicTrigger(p *player, logger *GameLogger, round int) {
 	fmt.Printf("\t\t\t%s\n", red(bold("*** PANIC ATTACK! (Level 3 Reached) ***")))
+
+	logger.LogEvent(round, p, "Panic", "Trigger", "Panic Level 3", "Disaster", "Lose Inventory & 5 O2")
+
 	p.Panic = 0
 	if len(p.Inventory) > 0 {
 		fmt.Printf("\t\t\t%s\n", yellow("Lost all items from inventory due to panic!"))
@@ -173,21 +267,18 @@ func drawO2CardForBreath(p *player) ([]O2, bool) {
 	return cards, true
 }
 
-// MODIFICA: Logica aggiornata per gestire carte ibride (Doppio Tipo)
-func resolveCardInteraction(p *player, card O2, randomizer *rand.Rand, actionName string) bool {
+func resolveCardInteraction(p *player, card O2, randomizer *rand.Rand, actionName string, logger *GameLogger, round int) bool {
 	if p.Panic >= 3 {
-		handlePanicTrigger(p)
+		handlePanicTrigger(p, logger, round)
 		return false
 	}
 	diceFaces := getDiceFaces(p.Panic)
 
-	// Preparazione Descrizione
 	cardDesc := string(card.Type)
 	if card.SecondaryType != "" {
 		cardDesc += " + " + string(card.SecondaryType) + " (BOSS)"
 	}
 
-	// Calcolo Disponibilità
 	availablePrimary := p.AbilityPool[card.Type]
 	availableSecondary := 0
 	if card.SecondaryType != "" {
@@ -196,8 +287,6 @@ func resolveCardInteraction(p *player, card O2, randomizer *rand.Rand, actionNam
 
 	fmt.Printf("\t\t\t%s: %s (Difficulty: %d) | Panic: %d (Dice: d%d)\n",
 		actionName, cyan(cardDesc), card.Value, p.Panic, diceFaces)
-
-	// Mostra Pool disponibili
 	fmt.Printf("\t\t\tPools -> %s: %d", card.Type, availablePrimary)
 	if card.SecondaryType != "" {
 		fmt.Printf(" | %s: %d", card.SecondaryType, availableSecondary)
@@ -208,7 +297,6 @@ func resolveCardInteraction(p *player, card O2, randomizer *rand.Rand, actionNam
 	spentPrimary := 0
 	spentSecondary := 0
 
-	// 1. Chiedi Primary
 	for {
 		fmt.Printf("\t\t\tSpend %s points? (0-%d): ", card.Type, availablePrimary)
 		input, _ := reader.ReadString('\n')
@@ -221,7 +309,6 @@ func resolveCardInteraction(p *player, card O2, randomizer *rand.Rand, actionNam
 		fmt.Println("\t\t\tInvalid amount.")
 	}
 
-	// 2. Chiedi Secondary (se esiste)
 	if card.SecondaryType != "" {
 		for {
 			fmt.Printf("\t\t\tSpend %s points? (0-%d): ", card.SecondaryType, availableSecondary)
@@ -236,7 +323,6 @@ func resolveCardInteraction(p *player, card O2, randomizer *rand.Rand, actionNam
 		}
 	}
 
-	// Applica spesa
 	p.AbilityPool[card.Type] -= spentPrimary
 	if card.SecondaryType != "" {
 		p.AbilityPool[card.SecondaryType] -= spentSecondary
@@ -249,17 +335,22 @@ func resolveCardInteraction(p *player, card O2, randomizer *rand.Rand, actionNam
 	fmt.Printf("\t\t\tResult: Spent %d + Rolled %d = %d vs Difficulty %d ... ",
 		totalSpent, diceResult, total, card.Value)
 
+	// Log details
+	details := fmt.Sprintf("Card: %s (Val: %d) | Spent: %d | Rolled: %d", cardDesc, card.Value, totalSpent, diceResult)
+
 	if total > card.Value {
 		fmt.Printf("%s\n", green("SUCCESS!"))
 		p.RoundScore += card.Value
 		fmt.Printf("\t\t\t%s (+%d score)\n", yellow("Round Score Increased"), card.Value)
+		logger.LogEvent(round, p, actionName, "Resolve", details, "SUCCESS", "")
 		return true
 	} else {
 		fmt.Printf("%s\n", red("FAILURE."))
 		p.Panic++
 		fmt.Printf("\t\t\tPanic increased to %d\n", p.Panic)
+		logger.LogEvent(round, p, actionName, "Resolve", details, "FAILURE", "Panic Increased")
 		if p.Panic >= 3 {
-			handlePanicTrigger(p)
+			handlePanicTrigger(p, logger, round)
 		}
 		return false
 	}
@@ -297,6 +388,10 @@ func printPlayerStatus(p *player) {
 func main() {
 	randomizer := rand.New(rand.NewSource(time.Now().UnixNano()))
 	reader := bufio.NewReader(os.Stdin)
+
+	// INIZIALIZZA LOGGER EXCEL
+	gameLogger := NewGameLogger()
+	excelFileName := "game_logs.xlsx"
 
 	// --- OGGETTI ---
 	commonItemsPool := []item{
@@ -374,25 +469,17 @@ func main() {
 			o2.Type = Soprannatural
 		}
 		o2.Value = cardValuesPattern[i%10]
-		o2.Name = fmt.Sprintf("%s.%s-%d", o2.Type, o2.SecondaryType, o2.Value)
+		o2.Name = fmt.Sprintf("%s-%d", o2.Type, o2.Value)
 		o2Deck[i] = o2
 	}
 
-	// --- INSERIMENTO BOSS IBRIDI ---
+	// --- BOSS ---
+	o2Deck = append(o2Deck, O2{Name: "LEVIATHAN", Type: Encounter, SecondaryType: Soprannatural, Value: 8})
+	o2Deck = append(o2Deck, O2{Name: "ABYSS STORM", Type: Environment, SecondaryType: Technical, Value: 7})
+	o2Deck = append(o2Deck, O2{Name: "ALIEN WRECK", Type: Technical, SecondaryType: Encounter, Value: 7})
+	o2Deck = append(o2Deck, O2{Name: "CURSE", Type: Soprannatural, SecondaryType: Environment, Value: 6})
 
-	// Boss 1: Il Leviatano (Encounter + Soprannatural) - Val 8
-	o2Deck = append(o2Deck, O2{Type: Encounter, SecondaryType: Soprannatural, Value: 8})
-
-	// Boss 2: Tempesta Abissale (Environment + Technical) - Val 7
-	o2Deck = append(o2Deck, O2{Type: Environment, SecondaryType: Technical, Value: 7})
-
-	// Boss 3: Relitto Alieno (Technical + Encounter) - Val 7
-	o2Deck = append(o2Deck, O2{Type: Technical, SecondaryType: Encounter, Value: 7})
-
-	// Boss 4: Maledizione degli Abissi (Soprannatural + Environment) - Val 6
-	o2Deck = append(o2Deck, O2{Type: Soprannatural, SecondaryType: Environment, Value: 6})
-
-	fmt.Println(purple("Boss Cards inserted into the deck! Beware the Leviathan..."))
+	fmt.Println(purple("Boss Cards inserted into the deck!"))
 
 	players := make([]player, NumberOfPlayers)
 	for i := range NumberOfPlayers {
@@ -415,6 +502,8 @@ func main() {
 	}
 
 	for game := range NumberOfGames {
+		gameLogger.InitSheet(game + 1)
+
 		gameItems := make([]item, len(itemsDeck))
 		copy(gameItems, itemsDeck)
 		randomizer.Shuffle(len(gameItems), func(i, j int) { gameItems[i], gameItems[j] = gameItems[j], gameItems[i] })
@@ -432,11 +521,14 @@ func main() {
 						if players[i].Panic == 0 {
 							rndAbility := allAbilities[randomizer.Intn(len(allAbilities))]
 							players[i].AbilityPool[rndAbility]++
-							fmt.Printf("\t\t%s is calm. Recovered 1 point in %s (Total: %d)\n",
-								players[i].Id, rndAbility, players[i].AbilityPool[rndAbility])
+							msg := fmt.Sprintf("Recovered 1 point in %s", rndAbility)
+							fmt.Printf("\t\t%s is calm. %s (Total: %d)\n",
+								players[i].Id, msg, players[i].AbilityPool[rndAbility])
+							gameLogger.LogEvent(round, &players[i], "Rest", "Regen", string(rndAbility), "SUCCESS", msg)
 						} else {
-							fmt.Printf("\t\t%s is too stressed to rest! (Panic: %d) - No points recovered.\n",
+							fmt.Printf("\t\t%s is too stressed to rest! (Panic: %d)\n",
 								red(players[i].Id), players[i].Panic)
+							gameLogger.LogEvent(round, &players[i], "Rest", "Regen", "Panic Too High", "SKIPPED", "")
 						}
 						players[i].RoundScore = 0
 					}
@@ -453,9 +545,12 @@ func main() {
 				cards, ok := drawO2CardForBreath(p)
 				if !ok {
 					fmt.Printf("\t\t%s\n", red(bold(fmt.Sprintf("*** %s SUFFOCATED! ***", p.Id))))
+					gameLogger.LogEvent(round, p, "Turn", "Breath", "No O2 Cards", "DEATH", "Suffocated")
 					continue
 				}
-				resolveCardInteraction(p, cards[0], randomizer, "BREATH CHECK")
+
+				// Log Breath Check
+				resolveCardInteraction(p, cards[0], randomizer, "BREATH CHECK", gameLogger, round)
 
 				actionsLeft := 3
 				if p.Panic >= 3 {
@@ -506,13 +601,17 @@ func main() {
 							}
 							roll := randomizer.Intn(willpowerDice) + 1
 							total := totalSpent + roll
-							fmt.Printf("\t\t\tResult: Spent %d + Rolled %d (d%d) = %d vs Target %d ... ",
-								totalSpent, roll, willpowerDice, total, targetDifficulty)
+
+							details := fmt.Sprintf("Spent: %d | Rolled: %d (d%d)", totalSpent, roll, willpowerDice)
+
+							fmt.Printf("\t\t\tResult: %s = %d vs Target %d ... ", details, total, targetDifficulty)
 							if total >= targetDifficulty {
 								p.Panic--
 								fmt.Printf("%s (Panic is now %d)\n", green("SUCCESS!"), p.Panic)
+								gameLogger.LogEvent(round, p, "Action", "Calm Down", details, "SUCCESS", "Panic Reduced")
 							} else {
 								fmt.Printf("%s (Panic remains %d)\n", red("FAILED."), p.Panic)
+								gameLogger.LogEvent(round, p, "Action", "Calm Down", details, "FAILURE", "Panic Unchanged")
 							}
 						} else {
 							fmt.Println("\t\t\tYou are already calm.")
@@ -540,6 +639,9 @@ func main() {
 						if err == nil && choice > 0 && choice <= len(p.Inventory) {
 							index := choice - 1
 							item := p.Inventory[index]
+
+							gameLogger.LogEvent(round, p, "Action", "Use Item", item.Type, "USED", "")
+
 							fmt.Printf("\t\t\tUsing %s...\n", item.Type)
 							for _, eff := range item.Effects {
 								switch eff.effectType {
@@ -584,12 +686,13 @@ func main() {
 						if len(cards) > 0 {
 							p.O2 = newO2
 							p.DiscardedO2 = append(p.DiscardedO2, cards...)
-							resolveCardInteraction(p, cards[0], randomizer, "EXPLORE")
+							resolveCardInteraction(p, cards[0], randomizer, "EXPLORE", gameLogger, round)
 						} else {
 							fmt.Println("\t\t\tNo more O2 cards to explore.")
 						}
 					case "p":
 						actionsLeft = 0
+						gameLogger.LogEvent(round, p, "Action", "Pass", "", "PASSED", "")
 					default:
 						fmt.Println("\t\t\tInvalid command.")
 						a--
@@ -620,6 +723,7 @@ func main() {
 
 			if len(ranking) == 0 {
 				fmt.Println("\t\tNo items found (No one scored points).")
+				gameLogger.LogEvent(round, nil, "Loot", "None", "No Score", "", "")
 			} else {
 				itemsToDraw := len(ranking)
 				if itemsToDraw == 1 {
@@ -673,9 +777,13 @@ func main() {
 							treasureVal += ef.value
 						}
 					}
+
+					logDetails := selectedItem.Type
+
 					if isTreasure {
 						p.Treasure += treasureVal
 						fmt.Printf("\t\t%s obtained Treasure: %s (+%d)\n", p.Id, yellow(selectedItem.Type), treasureVal)
+						logDetails += fmt.Sprintf(" (Treasure +%d)", treasureVal)
 					} else {
 						if len(p.Inventory) < p.MaxInventorySize {
 							p.Inventory = append(p.Inventory, selectedItem)
@@ -694,14 +802,19 @@ func main() {
 									dropped := p.Inventory[dropIdx-1]
 									p.Inventory[dropIdx-1] = selectedItem
 									fmt.Printf("\t\tDropped %s and took %s.\n", dropped.Type, selectedItem.Type)
+									logDetails += fmt.Sprintf(" (Swapped with %s)", dropped.Type)
 								} else {
 									fmt.Println("\t\tInvalid input. Item discarded.")
+									logDetails += " (Discarded Full Inv)"
 								}
 							} else {
 								fmt.Printf("\t\t%s discarded due to full inventory.\n", selectedItem.Type)
+								logDetails += " (Discarded Full Inv)"
 							}
 						}
 					}
+					gameLogger.LogEvent(round, p, "Loot", "Acquire", logDetails, "SUCCESS", "")
+
 					if len(ranking) == 1 && i == 0 {
 						fmt.Println("\t\tRemaining items are discarded.")
 						marketItems = make([]item, 0)
@@ -720,6 +833,7 @@ func main() {
 		}
 		if len(survivors) == 0 {
 			fmt.Println(red("\tAll players perished in the deep. The ocean claims all."))
+			gameLogger.LogEvent(round, nil, "GameOver", "End", "No Survivors", "LOSS", "")
 		} else {
 			sort.Slice(survivors, func(i, j int) bool {
 				if survivors[i].Treasure == survivors[j].Treasure {
@@ -731,6 +845,10 @@ func main() {
 			fmt.Println()
 			fmt.Printf("\t%s\n", bold(green("🏆 WE HAVE A WINNER! 🏆")))
 			fmt.Printf("\t%s survived with %s Coins!\n", bold(winner.Id), bold(yellow(fmt.Sprintf("%d", winner.Treasure))))
+
+			msg := fmt.Sprintf("Winner: %s (Treasure: %d)", winner.Id, winner.Treasure)
+			gameLogger.LogEvent(round, &winner, "GameOver", "Win", msg, "VICTORY", "")
+
 			if len(survivors) > 1 {
 				fmt.Println("\tOther survivors:")
 				for i := 1; i < len(survivors); i++ {
@@ -740,6 +858,9 @@ func main() {
 			}
 		}
 	}
+
+	// Salvataggio finale Excel
+	gameLogger.Save(excelFileName)
 }
 
 func playersAlive(players []player) int {
