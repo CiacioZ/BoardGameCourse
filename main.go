@@ -338,7 +338,7 @@ func resolveCardInteraction(p *player, card O2, randomizer *rand.Rand, actionNam
 	// Log details
 	details := fmt.Sprintf("Card: %s (Val: %d) | Spent: %d | Rolled: %d", cardDesc, card.Value, totalSpent, diceResult)
 
-	if total > card.Value {
+	if total >= card.Value {
 		fmt.Printf("%s\n", green("SUCCESS!"))
 		p.RoundScore += card.Value
 		fmt.Printf("\t\t\t%s (+%d score)\n", yellow("Round Score Increased"), card.Value)
@@ -566,8 +566,8 @@ func main() {
 					switch input {
 					case "c":
 						if p.Panic > 0 {
-							targetDifficulty := 6
-							willpowerDice := 6
+							targetDifficulty := 4
+							willpowerDice := getDiceFaces(p.Panic)
 							fmt.Printf("\t\t\t%s (Target: %d)\n", bold(cyan("CALM DOWN CHECK")), targetDifficulty)
 							totalSpent := 0
 							spentMap := make(map[abilityType]int)
