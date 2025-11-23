@@ -524,6 +524,9 @@ func main() {
 				turnOrder = updateTurnOrder(players, turnOrder)
 				fmt.Printf("\t%s\n", purple(">>> Resting phase..."))
 				for i := range players {
+					if players[i].OnBoat {
+						continue
+					}
 					if len(players[i].O2) > 0 {
 						if players[i].Panic == 0 {
 							rndAbility := allAbilities[randomizer.Intn(len(allAbilities))]
@@ -712,6 +715,7 @@ func main() {
 					case "q":
 						p.OnBoat = true
 						p.ExitRound = round
+						p.RoundScore = 0
 						actionsLeft = 0
 						fmt.Printf("\t\t%s returned to the boat safely.\n", green(p.Id))
 						gameLogger.LogEvent(round, p, "Action", "Quit", "Returned to Boat", "SUCCESS", "")
