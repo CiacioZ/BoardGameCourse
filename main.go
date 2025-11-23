@@ -158,6 +158,8 @@ type player struct {
 	Effects          []itemEffect
 	MaxInventorySize int
 	RoundScore       int
+	OnBoat           bool
+	ExitRound        int
 }
 
 type item struct {
@@ -511,7 +513,7 @@ func main() {
 		fmt.Printf("%s\n", bold(cyan(fmt.Sprintf("START GAME %d", game+1))))
 		round := 1
 
-		for playersAlive(players) > 0 && len(gameItems) > 0 {
+		for activePlayers(players) > 0 && len(gameItems) > 0 {
 			fmt.Printf("\t%s\n", cyan(fmt.Sprintf("--- START ROUND %d ---", round)))
 
 			if round > 1 {
@@ -536,6 +538,9 @@ func main() {
 			}
 
 			for i := range players {
+				if players[i].OnBoat {
+					continue
+				}
 				if len(players[i].O2) == 0 {
 					continue
 				}
@@ -559,7 +564,7 @@ func main() {
 
 				for a := 1; a <= actionsLeft; a++ {
 					printPlayerStatus(p)
-					fmt.Printf("\t\t\tACTION %d/%d: (E)xplore - (U)se item - (C)alm down - (P)ass: ", a, actionsLeft)
+					fmt.Printf("\t\t\tACTION %d/%d: (E)xplore - (U)se item - (C)alm down - (P)ass - (Q)uit: ", a, actionsLeft)
 					input, _ := reader.ReadString('\n')
 					input = strings.TrimSpace(strings.ToLower(input))
 
@@ -690,6 +695,12 @@ func main() {
 						} else {
 							fmt.Println("\t\t\tNo more O2 cards to explore.")
 						}
+					case "q":
+						p.OnBoat = true
+						p.ExitRound = round
+						actionsLeft = 0
+						fmt.Printf("\t\t%s returned to the boat safely.\n", green(p.Id))
+						gameLogger.LogEvent(round, p, "Action", "Quit", "Returned to Boat", "SUCCESS", "")
 					case "p":
 						actionsLeft = 0
 						gameLogger.LogEvent(round, p, "Action", "Pass", "", "PASSED", "")
@@ -827,17 +838,17 @@ func main() {
 		fmt.Printf("%s\n", bold(cyan(fmt.Sprintf("GAME OVER"))))
 		var survivors []player
 		for _, p := range players {
-			if len(p.O2) > 0 {
+			if p.OnBoat {
 				survivors = append(survivors, p)
 			}
 		}
 		if len(survivors) == 0 {
-			fmt.Println(red("\tAll players perished in the deep. The ocean claims all."))
-			gameLogger.LogEvent(round, nil, "GameOver", "End", "No Survivors", "LOSS", "")
+			fmt.Println(red("\tAll players perished or failed to return to the boat."))
+			gameLogger.LogEvent(round, nil, "GameOver", "End", "No Survivors on Boat", "LOSS", "")
 		} else {
 			sort.Slice(survivors, func(i, j int) bool {
 				if survivors[i].Treasure == survivors[j].Treasure {
-					return len(survivors[i].O2) > len(survivors[j].O2)
+					return survivors[i].ExitRound > survivors[j].ExitRound
 				}
 				return survivors[i].Treasure > survivors[j].Treasure
 			})
@@ -863,14 +874,14 @@ func main() {
 	gameLogger.Save(excelFileName)
 }
 
-func playersAlive(players []player) int {
-	alivePlayers := len(players)
-	for _, player := range players {
-		if len(player.O2) == 0 {
-			alivePlayers--
+func activePlayers(players []player) int {
+	active := 0
+	for _, p := range players {
+		if len(p.O2) > 0 && !p.OnBoat {
+			active++
 		}
 	}
-	return alivePlayers
+	return active
 }
 
 func draw[T any](n int, slice []T) ([]T, []T) {
