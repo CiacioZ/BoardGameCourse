@@ -69,8 +69,7 @@ func (gl *GameLogger) InitSheet(gameNum int) {
 	gl.RowIndex++
 }
 
-// LogEvent scrive su Excel e (opzionalmente) su console se serve debugging extra,
-// ma qui lo usiamo per tracciare i dati silenziosamente mentre il gioco stampa a video.
+// LogEvent scrive su Excel
 func (gl *GameLogger) LogEvent(round int, p *player, phase, action, details, outcome, message string) {
 	if gl == nil {
 		return
@@ -120,14 +119,6 @@ func (gl *GameLogger) Save(filename string) {
 	}
 }
 
-// Rimuove i codici colore ANSI per il log Excel
-func stripAnsi(str string) string {
-	// Implementazione molto basilare, rimuove il carattere Escape principale
-	// Per una pulizia perfetta servirebbe una regex, ma per i log excel basta non avere troppa sporcizia
-	// Qui salviamo il messaggio raw o una versione semplificata
-	return str
-}
-
 // --- TYPES & CONSTANTS ---
 type abilityType string
 
@@ -165,6 +156,7 @@ type player struct {
 type item struct {
 	Type    string
 	Effects []itemEffect
+	IsRelic bool
 }
 
 type effectType string
@@ -226,6 +218,15 @@ func throwExplodingDice(faces int, randomizer *rand.Rand) int {
 func hasFreeBreath(p *player) bool {
 	for _, effect := range p.Effects {
 		if effect.effectType == FreeBreath {
+			return true
+		}
+	}
+	return false
+}
+
+func hasRelic(p *player) bool {
+	for _, item := range p.Inventory {
+		if item.IsRelic {
 			return true
 		}
 	}
@@ -334,10 +335,6 @@ func resolveCardInteraction(p *player, card O2, randomizer *rand.Rand, actionNam
 	diceResult := throwExplodingDice(diceFaces, randomizer)
 	total := totalSpent + diceResult
 
-	fmt.Printf("\t\t\tResult: Spent %d + Rolled %d = %d vs Difficulty %d ... ",
-		totalSpent, diceResult, total, card.Value)
-
-	// Log details
 	details := fmt.Sprintf("Card: %s (Val: %d) | Spent: %d | Rolled: %d", cardDesc, card.Value, totalSpent, diceResult)
 
 	if total >= card.Value {
@@ -378,10 +375,19 @@ func printPlayerStatus(p *player) {
 			if i > 0 {
 				fmt.Print(", ")
 			}
-			fmt.Print(cyan(item.Type))
+			if item.IsRelic {
+				fmt.Print(bold(purple(item.Type)))
+			} else {
+				fmt.Print(cyan(item.Type))
+			}
 		}
 	}
 	fmt.Println()
+	if hasRelic(p) {
+		fmt.Printf("\t\t\tCurse Status: %s\n", green("BROKEN (Can Exit)"))
+	} else {
+		fmt.Printf("\t\t\tCurse Status: %s\n", red("ACTIVE (Cannot Exit)"))
+	}
 	fmt.Printf("\t\t\t%s\n", cyan("-------------------"))
 }
 
@@ -394,6 +400,11 @@ func main() {
 	// INIZIALIZZA LOGGER EXCEL
 	gameLogger := NewGameLogger()
 	excelFileName := "game_logs.xlsx"
+
+	defer func() {
+		fmt.Println(purple("Saving logs..."))
+		gameLogger.Save(excelFileName)
+	}()
 
 	// --- OGGETTI ---
 	commonItemsPool := []item{
@@ -443,6 +454,35 @@ func main() {
 		{Type: "Adrenalina Pura", Effects: []itemEffect{{effectType: ReducePanic, value: 2}}},
 	}
 
+	// --- MASTER POOL RELIQUIE (Da cui estrarre casualmente) ---
+	masterRelicsPool := []item{
+		{Type: "HEART OF DAVY JONES", IsRelic: true, Effects: []itemEffect{{effectType: Treasure, value: 10}}},
+		{Type: "GHOST KEY", IsRelic: true, Effects: []itemEffect{{effectType: Treasure, value: 10}}},
+		{Type: "CURSED MAP", IsRelic: true, Effects: []itemEffect{{effectType: Treasure, value: 10}}},
+		{Type: "BLACK PEARL", IsRelic: true, Effects: []itemEffect{{effectType: Treasure, value: 10}}},
+		{Type: "KRAKEN'S EYE", IsRelic: true, Effects: []itemEffect{{effectType: Treasure, value: 10}}},
+		{Type: "NEPTUNE'S CROWN", IsRelic: true, Effects: []itemEffect{{effectType: Treasure, value: 10}}},
+		{Type: "SIREN'S HARP", IsRelic: true, Effects: []itemEffect{{effectType: Treasure, value: 10}}},
+		{Type: "ATLANTIS SHARD", IsRelic: true, Effects: []itemEffect{{effectType: Treasure, value: 10}}},
+	}
+
+	// CALCOLO QUANTE RELIQUIE INSERIRE (N + 1)
+	numRelics := NumberOfPlayers + 1
+	if numRelics > len(masterRelicsPool) {
+		numRelics = len(masterRelicsPool)
+	}
+
+	// Mescola la master pool per variare le reliquie ogni partita
+	randomizer.Shuffle(len(masterRelicsPool), func(i, j int) {
+		masterRelicsPool[i], masterRelicsPool[j] = masterRelicsPool[j], masterRelicsPool[i]
+	})
+
+	// Seleziona le reliquie attive per questa partita
+	activeRelics := masterRelicsPool[:numRelics]
+
+	fmt.Printf(purple("Game Setup: %d Players -> %d Relics hidden in the deck.\n"), NumberOfPlayers, len(activeRelics))
+
+	// --- COSTRUZIONE DECK ---
 	itemsDeck := make([]item, 0)
 	addItems := func(pool []item, count int) {
 		for i := 0; i < count; i++ {
@@ -454,6 +494,9 @@ func main() {
 	addItems(rareItemsPool, 6)
 	addItems(veryRareItemsPool, 3)
 	addItems(legendaryItemsPool, 1)
+
+	// Aggiungi SOLO le reliquie selezionate (N+1)
+	itemsDeck = append(itemsDeck, activeRelics...)
 
 	// --- COSTRUZIONE MAZZO O2 ---
 	cardValuesPattern := []int{1, 1, 2, 2, 2, 3, 3, 3, 4, 5}
@@ -581,11 +624,123 @@ func main() {
 
 				for a := 1; a <= actionsLeft; a++ {
 					printPlayerStatus(p)
-					fmt.Printf("\t\t\tACTION %d/%d: (E)xplore - (U)se item - (C)alm down - (P)ass - (Q)uit: ", a, actionsLeft)
+					fmt.Printf("\t\t\tACTION %d/%d: (E)xplore - (U)se item - (S)teal - (C)alm down - (P)ass - (Q)uit: ", a, actionsLeft)
 					input, _ := reader.ReadString('\n')
 					input = strings.TrimSpace(strings.ToLower(input))
 
 					switch input {
+					case "s":
+						if len(p.Inventory) >= p.MaxInventorySize {
+							fmt.Println("\t\t\tYour inventory is full! Drop something or use something first.")
+							continue
+						}
+
+						var victims []*player
+						fmt.Println("\t\t\tSelect a victim:")
+						validVictims := false
+						for i := range players {
+							other := &players[i]
+							if other.Id != p.Id && !other.OnBoat && len(other.O2) > 0 && len(other.Inventory) > 0 {
+								fmt.Printf("\t\t\t[%d] %s (Panic: %d, Items: %d)\n", i+1, other.Id, other.Panic, len(other.Inventory))
+								victims = append(victims, other)
+								validVictims = true
+							}
+						}
+
+						if !validVictims {
+							fmt.Println("\t\t\tNo valid victims nearby.")
+							continue
+						}
+
+						fmt.Print("\t\t\tChoose victim ID [1-N]: ")
+						input, _ := reader.ReadString('\n')
+						input = strings.TrimSpace(input)
+						vicIdx, err := strconv.Atoi(input)
+
+						var victim *player
+						if err == nil && vicIdx > 0 && vicIdx <= len(players) {
+							candidate := &players[vicIdx-1]
+							isValid := false
+							for _, v := range victims {
+								if v.Id == candidate.Id {
+									isValid = true
+									victim = candidate
+									break
+								}
+							}
+							if !isValid {
+								fmt.Println("\t\t\tInvalid selection.")
+								continue
+							}
+						} else {
+							fmt.Println("\t\t\tInvalid selection.")
+							continue
+						}
+
+						fmt.Printf("\t\t\tAttempting to steal from %s...\n", victim.Id)
+
+						attDice := getDiceFaces(p.Panic)
+						defDice := getDiceFaces(victim.Panic)
+
+						attRoll := randomizer.Intn(attDice) + 1
+						defRoll := randomizer.Intn(defDice) + 1
+
+						fmt.Printf("\t\t\tAttacker (d%d): %d vs Defender (d%d): %d\n", attDice, attRoll, defDice, defRoll)
+
+						details := fmt.Sprintf("Att: %d (d%d) vs Def: %d (d%d)", attRoll, attDice, defRoll, defDice)
+
+						// MODIFICA: L'attaccante prende SEMPRE panico (lottare stanca)
+						p.Panic++
+						fmt.Printf("\t\t\t%s exerts effort! +1 Panic.\n", p.Id)
+						if p.Panic >= 3 {
+							handlePanicTrigger(p, gameLogger, round)
+						}
+
+						if attRoll > defRoll {
+							fmt.Println(green("\t\t\tSUCCESS! You rifle through their pockets!"))
+
+							fmt.Println("\t\t\tChoose item to steal:")
+							for idx, it := range victim.Inventory {
+								itemStr := it.Type
+								if it.IsRelic {
+									itemStr = bold(purple(itemStr))
+								}
+								fmt.Printf("\t\t\t[%d] %s\n", idx+1, itemStr)
+							}
+
+							fmt.Print("\t\t\tSteal item [1-N]: ")
+							input, _ := reader.ReadString('\n')
+							itemIdx, _ := strconv.Atoi(strings.TrimSpace(input))
+
+							if itemIdx > 0 && itemIdx <= len(victim.Inventory) {
+								idx := itemIdx - 1
+								stolenItem := victim.Inventory[idx]
+
+								p.Inventory = append(p.Inventory, stolenItem)
+								victim.Inventory = append(victim.Inventory[:idx], victim.Inventory[idx+1:]...)
+
+								fmt.Printf("\t\t\tStole %s from %s!\n", stolenItem.Type, victim.Id)
+
+								// MODIFICA: Il difensore prende panico SOLO se perde una RELIQUIA
+								if stolenItem.IsRelic {
+									victim.Panic++
+									fmt.Printf("\t\t\t%s realizes their Relic is gone! (+1 Panic)\n", red(victim.Id))
+									if victim.Panic >= 3 {
+										handlePanicTrigger(victim, gameLogger, round)
+									}
+								} else {
+									fmt.Printf("\t\t\t%s is annoyed but calm.\n", victim.Id)
+								}
+
+								gameLogger.LogEvent(round, p, "Action", "Steal", details+" Stole "+stolenItem.Type, "SUCCESS", "")
+							} else {
+								fmt.Println("\t\t\tFumbled in the panic! (Invalid selection)")
+							}
+						} else {
+							fmt.Println(red("\t\t\tFAILED! They fought you off!"))
+							gameLogger.LogEvent(round, p, "Action", "Steal", details, "FAILURE", "")
+						}
+
 					case "c":
 						if p.Panic > 0 {
 							targetDifficulty := 4
@@ -713,12 +868,18 @@ func main() {
 							fmt.Println("\t\t\tNo more O2 cards to explore.")
 						}
 					case "q":
-						p.OnBoat = true
-						p.ExitRound = round
-						p.RoundScore = 0
-						actionsLeft = 0
-						fmt.Printf("\t\t%s returned to the boat safely.\n", green(p.Id))
-						gameLogger.LogEvent(round, p, "Action", "Quit", "Returned to Boat", "SUCCESS", "")
+						if hasRelic(p) {
+							p.OnBoat = true
+							p.ExitRound = round
+							actionsLeft = 0
+							fmt.Printf("\t\t%s BROKE THE CURSE and returned to the boat safely!\n", green(p.Id))
+							gameLogger.LogEvent(round, p, "Action", "Quit", "Returned to Boat (Relic Found)", "SUCCESS", "")
+						} else {
+							fmt.Printf("\t\t%s attempts to leave but the CURSE drags them back! (No Relic)\n", red(p.Id))
+							fmt.Println(purple("\t\tYou must find a CURSED RELIC to leave the ocean."))
+							gameLogger.LogEvent(round, p, "Action", "Quit", "Failed (No Relic)", "BLOCKED", "")
+							a--
+						}
 					case "p":
 						actionsLeft = 0
 						gameLogger.LogEvent(round, p, "Action", "Pass", "", "PASSED", "")
@@ -777,6 +938,9 @@ func main() {
 								desc := it.Type
 								if len(it.Effects) > 0 {
 									desc += fmt.Sprintf(" (%s %d)", it.Effects[0].effectType, it.Effects[0].value)
+								}
+								if it.IsRelic {
+									desc += " " + bold(purple("[CURSED RELIC]"))
 								}
 								fmt.Printf("\t\t\t[%d] %s\n", idx+1, yellow(desc))
 							}
@@ -922,34 +1086,6 @@ func determineInitiative(players []player, randomizer *rand.Rand) []int {
 		fmt.Printf("\t%s rolled %d\n", players[i].Id, roll)
 	}
 
-	// Sort by roll descending. Resolve ties with re-rolls.
-	sort.Slice(rolls, func(i, j int) bool {
-		if rolls[i].Roll != rolls[j].Roll {
-			return rolls[i].Roll > rolls[j].Roll
-		}
-		// Tie-breaker: re-roll until distinct (simplified: just random pick if equal for now, or recursive)
-		// For a robust solution, we can just use randomizer to break ties if we don't want infinite recursion risk,
-		// but let's do a quick re-roll simulation for the tie.
-		return randomizer.Intn(2) == 0
-	})
-
-	// Check for ties and re-roll specifically for those who tied?
-	// Actually, a simpler way for this assignment:
-	// Just keep re-rolling everyone until unique? No, that's too much.
-	// Let's just use the sort we did above which randomly breaks ties.
-	// To be more "game-like", we should announce tie-breakers, but for now random sort on tie is acceptable.
-
-	// Let's implement a slightly better tie breaker:
-	// If rolls are equal, re-roll for those specific players.
-	// Since sort.Slice expects a boolean, it's hard to do interactive re-rolls inside.
-	// Better approach:
-	// 1. Group by roll value.
-	// 2. For groups with > 1 player, re-roll for them recursively.
-	// 3. Combine results.
-
-	// However, for simplicity and speed, let's stick to the random tie break we added in the sort
-	// but maybe print a message if we could.
-	// Actually, let's just do a simple random shuffle before sort to ensure fairness on ties.
 	randomizer.Shuffle(len(rolls), func(i, j int) { rolls[i], rolls[j] = rolls[j], rolls[i] })
 	sort.Slice(rolls, func(i, j int) bool {
 		return rolls[i].Roll > rolls[j].Roll
