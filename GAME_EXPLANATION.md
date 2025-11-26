@@ -28,7 +28,7 @@ Players have 4 stats to overcome challenges:
 
 ### 4. Turn Order
 - **Round 1**: Determined by an Initiative Roll (d8).
-- **Next Rounds**: Determined by **Score**. The player who performed best (highest score) in the previous round acts first.
+- **Next Rounds**: Determined by **Score**. The player who performed **worst** (lowest score) in the previous round acts first (catch-up mechanic).
 
 ### 5. Resolving Challenges (Card Resolution)
 When you draw an O2 card (Breath Check or Explore), you must resolve it:
@@ -52,7 +52,14 @@ Each player performs the following:
 2.  **Actions** (Up to 3):
     - **(E)xplore**: Draw another O2 card, resolve it, and try to score points.
     - **(U)se Item**: Use an item from the inventory (e.g., Medkit, Oxygen Tank).
-    - **(C)alm Down**: Spend ability points to make a Willpower check and reduce Panic.
+    - **(C)alm Down**: Willpower check at **Difficulty 4**. You can spend points from *any* pool.
+        *   *Success*: Panic decreases by 1.
+        *   *Failure*: Panic remains unchanged.
+    - **(S)teal**: Opposed roll against another player.
+        *   **Mechanic**: Both players roll their Panic die and can spend ability points.
+        *   **Cost**: The Attacker *always* gains +1 Panic (stress of the theft).
+        *   *Win (Attacker > Defender)*: Steal 1 random item. If it is a **Relic**, the victim gains +1 Panic.
+        *   *Loss (Attacker <= Defender)*: Nothing happens.
     - **(Q)uit**: Return to the boat. You are safe and keep your treasure, but you stop playing.
     - **(P)ass**: End turn early.
 

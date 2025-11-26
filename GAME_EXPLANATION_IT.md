@@ -28,7 +28,7 @@ I giocatori hanno 4 statistiche per superare le sfide:
 
 ### 4. Ordine di Turno
 - **Round 1**: Determinato da un Tiro di Iniziativa (d8).
-- **Round Successivi**: Determinato dal **Punteggio**. Il giocatore che ha ottenuto il risultato migliore (punteggio più alto) nel round precedente agisce per primo.
+- **Round Successivi**: Determinato dal **Punteggio**. Il giocatore che ha ottenuto il risultato **peggiore** (punteggio più basso) nel round precedente agisce per primo (meccanica di recupero).
 
 ### 5. Risoluzione delle Sfide (Carte)
 Quando peschi una carta O2 (Controllo Respiro o Esplorazione), devi risolverla:
@@ -52,7 +52,14 @@ Ogni giocatore esegue le seguenti azioni:
 2.  **Azioni** (Fino a 3):
     - **(E)xplore (Esplora)**: Pesca un'altra carta O2, risolvila e cerca di fare punti.
     - **(U)se Item (Usa Oggetto)**: Usa un oggetto dall'inventario (es. Kit Medico, Bombola O2).
-    - **(C)alm Down (Calmati)**: Spendi punti abilità per fare una prova di Volontà e ridurre il Panico.
+    - **(C)alm Down (Calmati)**: Prova di Volontà a **Difficoltà 4**. Puoi spendere punti da *qualsiasi* riserva.
+        *   *Successo*: Il Panico scende di 1.
+        *   *Fallimento*: Il Panico resta invariato.
+    - **(S)teal (Ruba)**: Sfida contrapposta contro un altro giocatore.
+        *   **Meccanica**: Entrambi tirano il proprio dado Panico e possono spendere punti abilità.
+        *   **Costo**: L'Attaccante aumenta *sempre* il proprio Panico di 1 (lo stress del furto).
+        *   *Vittoria (Attaccante > Difensore)*: Rubi 1 oggetto a caso. Se è una **Reliquia**, la vittima aumenta il Panico di 1.
+        *   *Sconfitta (Attaccante <= Difensore)*: Nulla di fatto.
     - **(Q)uit (Lascia)**: Torna alla barca. Sei al sicuro e tieni il tuo tesoro, ma smetti di giocare.
     - **(P)ass (Passa)**: Termina il turno in anticipo.
 
