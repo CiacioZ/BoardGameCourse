@@ -67,6 +67,15 @@ Il gioco termina quando tutti i giocatori sono **Morti** o **Sulla Barca**.
 - **Condizione di Vittoria**: Chi ha più Tesori vince.
 - **Spareggio**: Se i Tesori sono uguali, vince il giocatore che è rimasto in gioco più a lungo (uscito in un round successivo).
 
+## 🤝 Modalità Cooperativa
+In questa variante, i giocatori collaborano contro l'oceano.
+- **Scoperta Condivisa**: I giocatori rivelano le carte simultaneamente.
+- **Tutto o Niente**: Tutte le carte rivelate devono essere risolte.
+- **Condizione Bottino**: Se *tutte* le carte vengono risolte con successo, il gruppo pesca **N oggetti** (dove N = Numero di Giocatori). Se anche solo una fallisce, **nessun oggetto** viene pescato.
+- **Obiettivo**: Trovare **N Reliquie** (dove N = Numero di Giocatori) prima del **Turno 8**.
+- **Davy Jones**: Arriva al Turno 8.
+- **Sopravvivenza**: Chi possiede almeno una Reliquia può riemergere e salvarsi. Gli altri muoiono.
+
 ## 🛠 Dettagli Tecnici
 - **Linguaggio**: Go (Golang).
 - **Logging**: Il gioco esporta un log dettagliato turno per turno su `game_logs.xlsx` usando la libreria `excelize`.

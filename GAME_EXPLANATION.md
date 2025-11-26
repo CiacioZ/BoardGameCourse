@@ -67,6 +67,15 @@ The game ends when all players are either **Dead** or **On the Boat**.
 - **Victory Condition**: Most Treasure wins.
 - **Tie-Breaker**: If Treasure is equal, the player who stayed in the game longer (Quit later) wins.
 
+## 🤝 Cooperative Mode
+In this variant, players work together against the ocean.
+- **Shared Discovery**: Players reveal cards simultaneously.
+- **All or Nothing**: All revealed cards must be resolved.
+- **Loot Condition**: If *all* cards are resolved successfully, the group draws **4 items**. If even one fails, **no items** are drawn.
+- **Goal**: Find **N Relics** (where N = Number of Players) before **Turn 8**.
+- **Davy Jones**: Arrives at Turn 8.
+- **Survival**: Players with at least one Relic can resurface and survive. Others perish.
+
 ## 🛠 Technical Details
 - **Language**: Go (Golang).
 - **Logging**: The game exports a detailed turn-by-turn log to `game_logs.xlsx` using the `excelize` library.
